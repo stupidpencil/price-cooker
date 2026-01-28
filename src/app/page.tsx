@@ -22,7 +22,7 @@ export default function Home() {
                  <div className="flex flex-wrap items-center gap-3 pt-2">
                    <a
                      href="/questionnaire"
-                     className="inline-flex items-center justify-center rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-zinc-50 shadow-sm transition hover:bg-zinc-800"
+                     className="inline-flex items-center justify-center rounded-full bg-blue-500 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-blue-600"
                    >
                      Lancer l&apos;évaluation
                    </a>

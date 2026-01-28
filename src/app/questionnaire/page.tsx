@@ -45,6 +45,10 @@ const steps: StepId[] = [
 export default function QuestionnairePage() {
   const router = useRouter();
 
+  const [projectName, setProjectName] = useState("");
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [projectNameError, setProjectNameError] = useState<string | null>(null);
+
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
   const [problemClarity, setProblemClarity] = useState<"clear_problem" | "solution_first" | "">(
@@ -92,14 +96,14 @@ export default function QuestionnairePage() {
   type PersonaCountMet = "1_seul" | "2_5" | "5_10" | "plus_10" | "";
 
   type PersonaImpactData = {
-    impactSlider: number; // 0-100, 0 = très faiblement, 100 = très fortement
+    impactSlider: number; // 25, 50, 75, ou 100 (Faible, Moyen, Fort, Critique)
     evidence: PersonaImpactEvidence[];
     countMet: PersonaCountMet; // ordre de grandeur
   };
 
   const [personaImpacts, setPersonaImpacts] = useState<Record<number, PersonaImpactData>>({});
-  // Track si la sélection cumulative a déjà été utilisée pour chaque persona
-  const [hasUsedCumulativeSelection, setHasUsedCumulativeSelection] = useState<Record<number, boolean>>({});
+  // Track les tooltips visibles (clé: "personaIndex-levelValue")
+  const [visibleTooltips, setVisibleTooltips] = useState<Set<string>>(new Set());
 
   type FunctionalBrick =
     | "web_app_simple"
@@ -121,12 +125,24 @@ export default function QuestionnairePage() {
 
   const [selectedBricks, setSelectedBricks] = useState<FunctionalBrick[]>([]);
 
+  type EffortScope = "mvp" | "v1" | "vision_complete" | "";
+  const [effortScope, setEffortScope] = useState<EffortScope>("");
+  
   const [budgetMin, setBudgetMin] = useState(0);
   const [budgetMax, setBudgetMax] = useState(100);
   const [timeMin, setTimeMin] = useState(0);
   const [timeMax, setTimeMax] = useState(100);
   const [effortConfidence, setEffortConfidence] = useState<EffortConfidence>("");
   const [noEffortEstimate, setNoEffortEstimate] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = sessionStorage.getItem("riceCookerProjectName");
+    if (stored && stored.trim()) {
+      setProjectName(stored.trim());
+      setProjectNameDraft(stored.trim());
+    }
+  }, []);
 
   useEffect(() => {
     if (selectedBricks.length > 0) {
@@ -152,6 +168,80 @@ export default function QuestionnairePage() {
       setTimeMax(0);
     }
   }, [selectedBricks]);
+
+  // Désélectionner automatiquement les briques non autorisées selon le périmètre
+  useEffect(() => {
+    if (!effortScope) {
+      // Si aucun périmètre n'est sélectionné, ne rien faire
+      return;
+    }
+    
+    const getBrickStatus = (brickId: FunctionalBrick): { visible: boolean; selectable: boolean; disabled: boolean } => {
+          if (effortScope === "mvp") {
+            // MVP : certaines briques sont désactivées (grisées et non sélectionnables)
+            const hiddenBricks: FunctionalBrick[] = [
+          "search_advanced",      // Recherche avancée
+          "matching",              // Matching / recommandation
+          "geoloc_simple",         // Géolocalisation
+          "notifications",         // Notifications
+          "streaming",             // Streaming / temps réel
+          "file_upload",           // Upload de fichiers lourds
+          "scalability",           // Scalabilité
+          "security_enhanced",     // Sécurité renforcée
+          "rgpd_advanced",         // RGPD avancé
+          "calc_complex",          // Moteur de calcul complexe
+          "multi_org",             // Multi-organisations (non mentionnée, donc masquée)
+        ];
+        if (hiddenBricks.includes(brickId)) {
+          return { visible: true, selectable: false, disabled: true };
+        }
+        // Toutes les autres briques sont visibles et sélectionnables en MVP
+        // user_accounts reste visible et sélectionnable (optionnelle, décochée par défaut)
+        return { visible: true, selectable: true, disabled: false };
+      }
+      
+      if (effortScope === "v1") {
+        // V1 : certaines briques sont visibles mais désactivées (grisées)
+        const disabledBricks: FunctionalBrick[] = [
+          "multi_org",
+          "calc_complex",
+          "matching",
+          "streaming",
+          "scalability",
+          "rgpd_advanced",
+        ];
+        if (disabledBricks.includes(brickId)) {
+          return { visible: true, selectable: false, disabled: true };
+        }
+        return { visible: true, selectable: true, disabled: false };
+      }
+      
+      // Vision complète : toutes les briques sont disponibles
+      return { visible: true, selectable: true, disabled: false };
+    };
+    
+    // Utiliser une fonction de mise à jour pour garantir que l'état est bien mis à jour
+    setSelectedBricks((prev) => {
+      const filtered = prev.filter((brick) => {
+        const status = getBrickStatus(brick);
+        // Garder seulement les briques qui sont sélectionnables et non désactivées
+        // Les briques désactivées (disabled: true ou selectable: false) doivent être retirées
+        const shouldKeep = status.selectable && !status.disabled;
+        return shouldKeep;
+      });
+      
+      // Pour MVP, décochée user_accounts par défaut si elle était sélectionnée
+      // (selon les spécifications : "optionnelle, affichée mais décochée par défaut")
+      let finalFiltered = filtered;
+      if (effortScope === "mvp" && filtered.includes("user_accounts")) {
+        // On la retire de la sélection pour qu'elle soit décochée par défaut
+        finalFiltered = filtered.filter((b) => b !== "user_accounts");
+      }
+      
+      // Retourner le nouveau tableau même s'il est identique pour forcer le re-render
+      return finalFiltered;
+    });
+  }, [effortScope]);
 
   const [projectStage, setProjectStage] = useState("");
   const [orgType, setOrgType] = useState("");
@@ -315,6 +405,10 @@ export default function QuestionnairePage() {
     }
 
     if (currentStep === "effort") {
+      if (!effortScope) {
+        setError("Merci de sélectionner le périmètre de votre estimation (MVP, V1 ou Vision complète).");
+        return false;
+      }
       if (noEffortEstimate) {
         return true;
       }
@@ -359,6 +453,7 @@ export default function QuestionnairePage() {
           timeMax,
           effortConfidence,
           noEffortEstimate,
+          effortScope,
           context: {
             projectStage,
             orgType,
@@ -404,6 +499,11 @@ export default function QuestionnairePage() {
         );
       }
 
+      // Nettoyer le sessionStorage après soumission réussie
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("riceCookerProjectName");
+      }
+      
       router.push(
         `/resultat?score=${encodeURIComponent(
           data.scorePercent,
@@ -454,23 +554,23 @@ export default function QuestionnairePage() {
         return (
           <section className="space-y-4">
             <h1 className="text-2xl font-semibold tracking-tight">
-              Quel est le problème que vous cherchez à résoudre ?
+              Quel est le problème que vous cherchez à résoudre {projectName ? `avec ${projectName}` : ""} ?
             </h1>
             <fieldset className="space-y-3">
               <div className="space-y-2">
                 <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-4 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                   <input
                     type="radio"
-                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                     checked={problemClarity === "clear_problem"}
                     onChange={() => setProblemClarity("clear_problem")}
                   />
                   <span className="flex-1">
-                    <span className="block font-medium">
+                    <span className="block text-base font-semibold">
                       Je connais le problème que je cherche à résoudre et je l&apos;ai déjà formulé.
                     </span>
                     {problemClarity === "clear_problem" && (
-                      <span className="mt-0.5 block text-xs text-zinc-600">
+                      <span className="mt-0.5 block text-sm font-medium text-zinc-600">
                         C&apos;est bien&nbsp;! Les problèmes sont le point de départ de toute
                         réflexion sur un produit.
                       </span>
@@ -480,17 +580,17 @@ export default function QuestionnairePage() {
                 <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-4 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                   <input
                     type="radio"
-                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                     checked={problemClarity === "solution_first"}
                     onChange={() => setProblemClarity("solution_first")}
                   />
                   <span className="flex-1">
-                    <span className="block font-medium">
+                    <span className="block text-base font-semibold">
                       J&apos;ai une idée de solution, mais je n&apos;ai pas de problème spécifique à
                       résoudre.
                     </span>
                     {problemClarity === "solution_first" && (
-                      <span className="mt-0.5 block text-xs text-zinc-600">
+                      <span className="mt-0.5 block text-sm font-medium text-zinc-600">
                         Ne pas chercher à résoudre un problème, c&apos;est miser sur la chance que votre
                         solution sera utile et donc utilisée. Nous vous conseillons de commencer par
                         identifier des problèmes à résoudre.
@@ -507,23 +607,23 @@ export default function QuestionnairePage() {
         return (
           <section className="space-y-4">
             <h1 className="text-2xl font-semibold tracking-tight">
-              Quelle démarche avez-vous eue pour démontrer l&apos;existence du problème ?
+              Quelle démarche avez-vous eue pour démontrer l&apos;existence du problème {projectName ? `pour ${projectName}` : ""} ?
             </h1>
             <fieldset className="space-y-3">
               <div className="space-y-2">
                 <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-4 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                   <input
                     type="radio"
-                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                     checked={problemApproach === "conviction_only"}
                     onChange={() => setProblemApproach("conviction_only")}
                   />
                   <span className="flex-1">
-                    <span className="block font-medium">
+                    <span className="block text-base font-semibold">
                       J&apos;ai la conviction que ce problème existe, mais je n&apos;ai pas cherché à le démontrer.
                     </span>
                     {problemApproach === "conviction_only" && (
-                      <span className="mt-0.5 block text-xs text-zinc-600">
+                      <span className="mt-0.5 block text-sm font-medium text-zinc-600">
                         Il est préférable d&apos;effectuer des sessions de recherche pour déterminer si le
                         problème est réel ou s&apos;il n&apos;est pas juste l&apos;expression de vos convictions.
                       </span>
@@ -533,16 +633,16 @@ export default function QuestionnairePage() {
                 <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-4 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                   <input
                     type="radio"
-                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                     checked={problemApproach === "informal_discussions"}
                     onChange={() => setProblemApproach("informal_discussions")}
                   />
                   <span className="flex-1">
-                    <span className="block font-medium">
+                    <span className="block text-base font-semibold">
                       J&apos;ai interrogé mes proches et sondé des connaissances lors d&apos;échanges plutôt informels (dîner, discussion, etc.).
                     </span>
                     {problemApproach === "informal_discussions" && (
-                      <span className="mt-0.5 block text-xs text-zinc-600">
+                      <span className="mt-0.5 block text-sm font-medium text-zinc-600">
                         Il est préférable d&apos;effectuer une recherche à partir d&apos;un panel
                         d&apos;utilisateurs concernés par votre problème. La discussion informelle peut être
                         intéressante pour prendre la température, mais elle ne permet pas de structurer une
@@ -554,16 +654,16 @@ export default function QuestionnairePage() {
                 <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-4 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                   <input
                     type="radio"
-                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                     checked={problemApproach === "structured_interviews"}
                     onChange={() => setProblemApproach("structured_interviews")}
                   />
                   <span className="flex-1">
-                    <span className="block font-medium">
+                    <span className="block text-base font-semibold">
                       J&apos;ai utilisé une méthode d&apos;interview sur un panel de personnes concernées par le problème.
                     </span>
                     {problemApproach === "structured_interviews" && (
-                      <span className="mt-0.5 block text-xs text-zinc-600">
+                      <span className="mt-0.5 block text-sm font-medium text-zinc-600">
                         C&apos;est une très bonne base&nbsp;: une démarche structurée vous aide à distinguer un
                         vrai problème d&apos;un simple ressenti et à réduire fortement le risque.
                       </span>
@@ -579,23 +679,23 @@ export default function QuestionnairePage() {
         return (
           <section className="space-y-4">
             <h1 className="text-2xl font-semibold tracking-tight">
-              Avez-vous réussi à savoir si le problème identifié n&apos;était pas la conséquence d&apos;un problème plus profond ?
+              Avez-vous réussi à savoir si le problème identifié {projectName ? `pour ${projectName}` : ""} n&apos;était pas la conséquence d&apos;un problème plus profond ?
             </h1>
             <fieldset className="space-y-3">
               <div className="space-y-2">
                 <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-4 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                   <input
                     type="radio"
-                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                     checked={interviewDepth === "listened_only"}
                     onChange={() => setInterviewDepth("listened_only")}
                   />
                   <span className="flex-1">
-                    <span className="block font-medium">
+                    <span className="block text-base font-semibold">
                       J&apos;ai écouté et pris note des réponses de mon interlocuteur.
                     </span>
                     {interviewDepth === "listened_only" && (
-                      <span className="mt-0.5 block text-xs text-zinc-600">
+                      <span className="mt-0.5 block text-sm font-medium text-zinc-600">
                         Généralement, les interviewés ne creusent pas le sujet d&apos;eux-mêmes et donnent
                         d&apos;abord des réponses superficielles qui vont vous orienter vers un problème peu
                         impactant. Cela augmente aussi les risques de biais de confirmation. Il est
@@ -608,16 +708,16 @@ export default function QuestionnairePage() {
                 <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-4 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                   <input
                     type="radio"
-                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                    className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                     checked={interviewDepth === "dug_deeper"}
                     onChange={() => setInterviewDepth("dug_deeper")}
                   />
                   <span className="flex-1">
-                    <span className="block font-medium">
+                    <span className="block text-base font-semibold">
                       J&apos;ai cherché à creuser le problème en interrogeant plusieurs fois mon interlocuteur sur le même sujet d&apos;une manière différente (question reformulée, prise de recul, décentrage du regard, etc.).
                     </span>
                     {interviewDepth === "dug_deeper" && (
-                      <span className="mt-0.5 block text-xs text-zinc-600">
+                      <span className="mt-0.5 block text-sm font-medium text-zinc-600">
                         En variant les angles et en relançant votre interlocuteur, vous augmentez vos chances
                         de remonter au vrai problème et de limiter les réponses superficielles.
                       </span>
@@ -632,23 +732,22 @@ export default function QuestionnairePage() {
       case "value_expectation":
         return (
           <section className="space-y-6">
-            <div className="space-y-1 text-center">
+            <div className="space-y-1">
               <h1 className="text-2xl font-semibold tracking-tight">
-                Que sont prêts à payer les gens qui ont ce problème ?
+                Que sont prêts à payer les gens qui ont ce problème {projectName ? `avec ${projectName}` : ""} ?
               </h1>
-              <p className="text-xs text-zinc-500">Impact perçu et solutions existantes</p>
             </div>
             <div className="space-y-8">
               <fieldset className="space-y-3">
-                <p className="text-sm font-medium text-zinc-900">
-                  Si ce problème est résolu, à quel point les utilisateurs seront prêts à investir
+                <p className="text-sm font-bold text-zinc-900">
+                  Si ce problème est résolu {projectName ? `avec ${projectName}` : ""}, à quel point les utilisateurs seront prêts à investir
                   du temps ou de l&apos;argent pour le résoudre ?
                 </p>
                 <div className="space-y-2 text-sm text-zinc-800">
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={valueExpectations === "ux_better"}
                       onChange={() => setValueExpectations("ux_better")}
                     />
@@ -657,7 +756,7 @@ export default function QuestionnairePage() {
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={valueExpectations === "time_saved"}
                       onChange={() => setValueExpectations("time_saved")}
                     />
@@ -666,7 +765,7 @@ export default function QuestionnairePage() {
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={valueExpectations === "new_capability"}
                       onChange={() => setValueExpectations("new_capability")}
                     />
@@ -678,7 +777,7 @@ export default function QuestionnairePage() {
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={valueExpectations === "game_changer"}
                       onChange={() => setValueExpectations("game_changer")}
                     />
@@ -687,7 +786,7 @@ export default function QuestionnairePage() {
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={valueExpectations === "dont_know_value"}
                       onChange={() => setValueExpectations("dont_know_value")}
                     />
@@ -697,15 +796,15 @@ export default function QuestionnairePage() {
               </fieldset>
 
               <fieldset className="space-y-3">
-                <p className="text-sm font-medium text-zinc-900">
-                  Est-il possible aujourd&apos;hui de résoudre ce problème, même de manière
+                <p className="text-sm font-bold text-zinc-900">
+                  Est-il possible aujourd&apos;hui de résoudre ce problème {projectName ? `avec ${projectName}` : ""}, même de manière
                   dégradée (concurrent, hack, etc.) ?
                 </p>
                 <div className="space-y-2 text-sm text-zinc-800">
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={alternativeSolutions === "all_can_solve"}
                       onChange={() => setAlternativeSolutions("all_can_solve")}
                     />
@@ -714,7 +813,7 @@ export default function QuestionnairePage() {
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={alternativeSolutions === "some_cannot"}
                       onChange={() => setAlternativeSolutions("some_cannot")}
                     />
@@ -725,7 +824,7 @@ export default function QuestionnairePage() {
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={alternativeSolutions === "no_alternative"}
                       onChange={() => setAlternativeSolutions("no_alternative")}
                     />
@@ -734,7 +833,7 @@ export default function QuestionnairePage() {
                   <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
                     <input
                       type="radio"
-                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
+                      className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
                       checked={alternativeSolutions === "dont_know_alt"}
                       onChange={() => setAlternativeSolutions("dont_know_alt")}
                     />
@@ -750,7 +849,7 @@ export default function QuestionnairePage() {
         return (
           <section className="space-y-4">
             <h1 className="text-2xl font-semibold tracking-tight">
-              Qui rencontre ce problème ?
+              Qui rencontre ce problème {projectName ? `avec ${projectName}` : ""} ?
             </h1>
             <p className="text-sm text-zinc-700">
               Nommez les types de personnes pour qui ce problème est réel. Plus vos personas sont
@@ -794,7 +893,7 @@ export default function QuestionnairePage() {
                             ),
                           );
                         }}
-                        className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                        className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div className="space-y-1">
@@ -811,7 +910,7 @@ export default function QuestionnairePage() {
                             ),
                           );
                         }}
-                        className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                        className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="">Sélectionnez une option</option>
                         <option value="assumed">
@@ -840,7 +939,7 @@ export default function QuestionnairePage() {
                   { name: "", confidence: "" },
                 ])
               }
-              className="text-sm font-medium text-zinc-800 underline-offset-4 hover:underline"
+              className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
             >
               + Ajouter un persona
             </button>
@@ -853,7 +952,7 @@ export default function QuestionnairePage() {
           <section className="space-y-6">
             <div className="space-y-1">
               <h1 className="text-2xl font-semibold tracking-tight">
-                Quel impact la solution aura chez ces utilisateurs ?
+                Quel impact {projectName || "la solution"} aura chez ces utilisateurs ?
               </h1>
               <p className="text-sm text-zinc-700">
                 Indiquez l&apos;impact de la solution sur{" "}
@@ -870,7 +969,7 @@ export default function QuestionnairePage() {
             <div className="space-y-8">
               {filledPersonas.map((persona, index) => {
                 const impactData = personaImpacts[index] || {
-                  impactSlider: 50,
+                  impactSlider: 25,
                   evidence: [],
                   countMet: "" as PersonaCountMet,
                 };
@@ -878,7 +977,7 @@ export default function QuestionnairePage() {
                 const toggleEvidence = (evidence: PersonaImpactEvidence) => {
                   setPersonaImpacts((prev) => {
                     const current = prev[index] || {
-                      impactSlider: 50,
+                      impactSlider: 25,
                       evidence: [],
                       countMet: "" as PersonaCountMet,
                     };
@@ -898,43 +997,135 @@ export default function QuestionnairePage() {
                       La solution va aider {persona.name || `Persona ${index + 1}`}...
                     </h2>
                     <div className="space-y-3">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs text-zinc-600">
-                          <span>Très faiblement</span>
-                          <span>Très fortement</span>
-                        </div>
-                        <div className="relative">
-                          <div
-                            className="absolute inset-0 h-2 rounded-full"
-                            style={{
-                              background: `linear-gradient(to right, 
-                                #ef4444 0%, 
-                                #ef4444 40%, 
-                                #eab308 40%, 
-                                #eab308 79%, 
-                                #22c55e 79%, 
-                                #22c55e 100%)`,
-                            }}
-                          />
-                          <input
-                            type="range"
-                            min={0}
-                            max={100}
-                            value={impactData.impactSlider}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              setPersonaImpacts((prev) => ({
-                                ...prev,
-                                [index]: {
-                                  ...prev[index],
-                                  impactSlider: val,
-                                  evidence: prev[index]?.evidence || [],
-                                  countMet: prev[index]?.countMet || ("" as PersonaCountMet),
-                                },
-                              }));
-                            }}
-                            className="relative z-10 h-2 w-full appearance-none rounded-full bg-transparent [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-zinc-900 [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:transition [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-zinc-900 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
-                          />
+                      <div className="space-y-3">
+                        <label className="block text-sm font-medium text-zinc-800">
+                          À quel point {persona.name || `Persona ${index + 1}`} sera impacté si ce problème est résolu ?
+                        </label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[
+                            {
+                              value: 25,
+                              label: "Faible",
+                              color: "bg-red-500",
+                              borderColor: "border-red-500",
+                              hoverColor: "hover:bg-red-50",
+                              tooltip: {
+                                title: "🔴 Faible",
+                                content: "Le problème existe, mais il n'a que peu d'effet concret sur le quotidien de l'utilisateur.",
+                                example: "La solution améliore légèrement le confort ou l'ergonomie, sans changer la façon de travailler.",
+                                situation: '"C\'est un peu pénible, mais on peut très bien continuer comme ça."',
+                              },
+                            },
+                            {
+                              value: 50,
+                              label: "Moyen",
+                              color: "bg-yellow-500",
+                              borderColor: "border-yellow-500",
+                              hoverColor: "hover:bg-yellow-50",
+                              tooltip: {
+                                title: "🟡 Moyen",
+                                content: "Le problème gêne régulièrement l'utilisateur, mais il est contournable.",
+                                example: "La solution fait gagner du temps ou réduit de la friction, sans être prioritaire.",
+                                situation: '"On perd du temps, mais on a trouvé des astuces pour faire avec."',
+                              },
+                            },
+                            {
+                              value: 75,
+                              label: "Fort",
+                              color: "bg-green-500",
+                              borderColor: "border-green-500",
+                              hoverColor: "hover:bg-green-50",
+                              tooltip: {
+                                title: "🟢 Fort",
+                                content: "Le problème impacte clairement la performance ou la qualité du travail.",
+                                example: "La solution réduit des erreurs, des frictions importantes ou un coût opérationnel.",
+                                situation: '"Si une bonne solution existait, on l\'utiliserait rapidement."',
+                              },
+                            },
+                            {
+                              value: 100,
+                              label: "Critique",
+                              color: "bg-blue-500",
+                              borderColor: "border-blue-500",
+                              hoverColor: "hover:bg-blue-50",
+                              tooltip: {
+                                title: "🔵 Critique",
+                                content: "Le problème bloque l'activité ou met en risque des enjeux majeurs.",
+                                example: "La solution est nécessaire pour continuer à opérer ou se développer.",
+                                situation: '"Sans solution, on ne peut pas continuer dans ces conditions."',
+                              },
+                            },
+                          ].map((level) => {
+                            const isSelected = impactData.impactSlider === level.value;
+                            const tooltipKey = `${index}-${level.value}`;
+                            const showTooltip = visibleTooltips.has(tooltipKey);
+
+                            return (
+                              <div key={level.value} className="relative group">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPersonaImpacts((prev) => ({
+                                      ...prev,
+                                      [index]: {
+                                        ...prev[index],
+                                        impactSlider: level.value,
+                                        evidence: prev[index]?.evidence || [],
+                                        countMet: prev[index]?.countMet || ("" as PersonaCountMet),
+                                      },
+                                    }));
+                                  }}
+                                  onMouseEnter={() => {
+                                    setVisibleTooltips((prev) => new Set(prev).add(tooltipKey));
+                                  }}
+                                  onMouseLeave={() => {
+                                    setVisibleTooltips((prev) => {
+                                      const next = new Set(prev);
+                                      next.delete(tooltipKey);
+                                      return next;
+                                    });
+                                  }}
+                                  className={`w-full rounded-lg border-2 p-3 text-center text-sm font-medium transition-all ${
+                                    isSelected
+                                      ? `${level.borderColor} ${level.color} text-white shadow-md`
+                                      : `border-zinc-300 bg-white text-zinc-800 ${level.hoverColor} hover:border-zinc-400 hover:shadow-sm`
+                                  }`}
+                                >
+                                  {level.label}
+                                </button>
+                                
+                                {/* Tooltip */}
+                                {showTooltip && (
+                                  <div className={`absolute left-1/2 z-50 w-80 -translate-x-1/2 rounded-lg border border-zinc-200 bg-white p-4 shadow-xl ${
+                                    level.value >= 75 
+                                      ? "bottom-full mb-2" 
+                                      : "top-full mt-2"
+                                  }`}>
+                                    <div className="space-y-2 text-sm">
+                                      <div className="font-semibold text-zinc-900">
+                                        {level.tooltip.title}
+                                      </div>
+                                      <div className="text-zinc-700">
+                                        {level.tooltip.content}
+                                      </div>
+                                      <div className="text-zinc-600">
+                                        <span className="font-medium">Exemple :</span> {level.tooltip.example}
+                                      </div>
+                                      <div className="text-zinc-600 italic">
+                                        <span className="font-medium">Situation :</span> {level.tooltip.situation}
+                                      </div>
+                                    </div>
+                                    {/* Flèche du tooltip */}
+                                    <div className={`absolute left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-l border-t border-zinc-200 bg-white ${
+                                      level.value >= 75 
+                                        ? "-bottom-2" 
+                                        : "-top-2"
+                                    }`} />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                       <div className="space-y-3">
@@ -942,238 +1133,59 @@ export default function QuestionnairePage() {
                           Pour preuve, vous avez
                         </label>
                         
-                        {/* Vérifier si c'est la première sélection (aucune preuve ou toutes consécutives depuis le début) */}
-                        {(() => {
-                          const allProofs: PersonaImpactEvidence[] = [
-                            "heard_people_say",
-                            "interviews_with_persona",
-                            "design_phase",
-                            "tested_myself",
-                            "persona_certified_solution",
-                            "persona_certified_payment",
-                          ];
-                          
-                          // Vérifier si on a déjà utilisé la sélection cumulative pour cette persona
-                          const hasUsedCumulative = hasUsedCumulativeSelection[index] || false;
-                          
-                          // Si on a déjà utilisé la sélection cumulative, on passe en mode individuel
-                          // Sinon, on vérifie si c'est la première sélection (aucune preuve ou toutes consécutives depuis le début)
-                          let isConsecutiveFromStart = true;
-                          let firstMissingIndex = -1;
-                          for (let i = 0; i < allProofs.length; i++) {
-                            if (!impactData.evidence.includes(allProofs[i])) {
-                              firstMissingIndex = i;
-                              break;
-                            }
-                          }
-                          // Si on a trouvé un index manquant, vérifier qu'il n'y a pas de preuves après
-                          if (firstMissingIndex !== -1) {
-                            for (let i = firstMissingIndex; i < allProofs.length; i++) {
-                              if (impactData.evidence.includes(allProofs[i])) {
-                                isConsecutiveFromStart = false;
-                                break;
-                              }
-                            }
-                          }
-                          
-                          // Le mode cumulatif n'est disponible que si :
-                          // 1. On n'a pas encore utilisé la sélection cumulative
-                          // 2. Aucune preuve n'est sélectionnée OU toutes les preuves sont consécutives depuis le début
-                          const isFirstSelection = !hasUsedCumulative && (impactData.evidence.length === 0 || isConsecutiveFromStart);
-                          
-                          return (
-                            <>
-                              {isFirstSelection ? (
-                                /* Mode curseur cumulatif (première sélection) */
-                                <div className="space-y-1">
-                                  <p className="mb-2 text-xs text-zinc-500">
-                                    Cliquez sur le niveau maximum que vous avez atteint (sélection cumulative)
-                                  </p>
-                                  {[
-                                    {
-                                      id: "heard_people_say" as PersonaImpactEvidence,
-                                      label: "entendu des personnes dire que cette solution serait la bonne",
-                                      level: 1,
-                                    },
-                                    {
-                                      id: "interviews_with_persona" as PersonaImpactEvidence,
-                                      label: `réalisé des entretiens avec ${persona.name || `Persona ${index + 1}`} sur le problème en question`,
-                                      level: 2,
-                                    },
-                                    {
-                                      id: "design_phase" as PersonaImpactEvidence,
-                                      label: "réalisé une phase de conception de la solution avec un designer qualifié",
-                                      level: 3,
-                                    },
-                                    {
-                                      id: "tested_myself" as PersonaImpactEvidence,
-                                      label: "testé la solution moi-même et je la trouve intéressante",
-                                      level: 4,
-                                    },
-                                    {
-                                      id: "persona_certified_solution" as PersonaImpactEvidence,
-                                      label: `interrogé ${persona.name || `Persona ${index + 1}`} qui vous a certifié que ma solution était la bonne`,
-                                      level: 5,
-                                    },
-                                    {
-                                      id: "persona_certified_payment" as PersonaImpactEvidence,
-                                      label: `interrogé ${persona.name || `Persona ${index + 1}`} qui vous a certifié qu'il paierait pour cette solution`,
-                                      level: 6,
-                                    },
-                                  ].map((proof, proofIndex) => {
-                                    const isSelected = impactData.evidence.includes(proof.id);
-                                    
-                                    // Déterminer le niveau maximum atteint
-                                    let maxConsecutiveLevel = 0;
-                                    for (let i = 0; i < allProofs.length; i++) {
-                                      if (impactData.evidence.includes(allProofs[i])) {
-                                        maxConsecutiveLevel = i + 1;
-                                      } else {
-                                        break;
-                                      }
-                                    }
-                                    
-                                    const isAtLevel = proof.level <= maxConsecutiveLevel;
-                                    
-                                    return (
-                                      <div key={proof.id} className="relative">
-                                        {/* Ligne de connexion verticale */}
-                                        {proofIndex < 5 && (
-                                          <div
-                                            className={`absolute left-[11px] top-6 h-6 w-0.5 ${
-                                              isAtLevel ? "bg-emerald-500" : "bg-zinc-200"
-                                            }`}
-                                          />
-                                        )}
-                                        
-                                        {/* Bouton de niveau */}
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const targetLevel = proof.level;
-                                            // Sélectionner jusqu'à ce niveau (mode cumulatif)
-                                            const newEvidence = allProofs.slice(0, targetLevel);
-                                            
-                                            // Marquer qu'on a utilisé la sélection cumulative pour cette persona
-                                            setHasUsedCumulativeSelection((prev) => ({
-                                              ...prev,
-                                              [index]: true,
-                                            }));
-                                            
-                                            setPersonaImpacts((prev) => ({
-                                              ...prev,
-                                              [index]: {
-                                                ...prev[index],
-                                                impactSlider: prev[index]?.impactSlider || 50,
-                                                evidence: newEvidence,
-                                                countMet: prev[index]?.countMet || ("" as PersonaCountMet),
-                                              },
-                                            }));
-                                          }}
-                                          className={`group relative flex w-full items-start gap-3 rounded-lg border-2 p-3 text-left text-sm transition-all ${
-                                            isAtLevel
-                                              ? "border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm"
-                                              : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50"
-                                          }`}
-                                        >
-                                          {/* Indicateur de niveau (cercle) */}
-                                          <div
-                                            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
-                                              isAtLevel
-                                                ? "border-emerald-500 bg-emerald-500"
-                                                : "border-zinc-300 bg-white group-hover:border-zinc-400"
-                                            }`}
-                                          >
-                                            {isAtLevel && (
-                                              <svg
-                                                className="h-3.5 w-3.5 text-white"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                              >
-                                                <path
-                                                  strokeLinecap="round"
-                                                  strokeLinejoin="round"
-                                                  strokeWidth={3}
-                                                  d="M5 13l4 4L19 7"
-                                                />
-                                              </svg>
-                                            )}
-                                          </div>
-                                          
-                                          {/* Texte de la preuve */}
-                                          <div className="flex-1 pt-0.5">
-                                            <span className={isAtLevel ? "font-medium" : ""}>
-                                              {proof.label}
-                                            </span>
-                                          </div>
-                                        </button>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                /* Mode sélection individuelle (après première sélection) */
-                                <div className="space-y-2 text-sm text-zinc-800">
-                                  <p className="mb-2 text-xs text-zinc-500">
-                                    Cliquez pour sélectionner ou désélectionner les preuves individuellement
-                                  </p>
-                                  {[
-                                    {
-                                      id: "heard_people_say" as PersonaImpactEvidence,
-                                      label: "entendu des personnes dire que cette solution serait la bonne",
-                                    },
-                                    {
-                                      id: "interviews_with_persona" as PersonaImpactEvidence,
-                                      label: `réalisé des entretiens avec ${persona.name || `Persona ${index + 1}`} sur le problème en question`,
-                                    },
-                                    {
-                                      id: "design_phase" as PersonaImpactEvidence,
-                                      label: "réalisé une phase de conception de la solution avec un designer qualifié",
-                                    },
-                                    {
-                                      id: "tested_myself" as PersonaImpactEvidence,
-                                      label: "testé la solution moi-même et je la trouve intéressante",
-                                    },
-                                    {
-                                      id: "persona_certified_solution" as PersonaImpactEvidence,
-                                      label: `interrogé ${persona.name || `Persona ${index + 1}`} qui vous a certifié que ma solution était la bonne`,
-                                    },
-                                    {
-                                      id: "persona_certified_payment" as PersonaImpactEvidence,
-                                      label: `interrogé ${persona.name || `Persona ${index + 1}`} qui vous a certifié qu'il paierait pour cette solution`,
-                                    },
-                                  ].map((proof) => {
-                                    const isSelected = impactData.evidence.includes(proof.id);
-                                    return (
-                                      <label
-                                        key={proof.id}
-                                        className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          className="mt-0.5 h-5 w-5 cursor-pointer rounded border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-zinc-900 checked:bg-zinc-900 hover:border-zinc-500"
-                                          checked={isSelected}
-                                          onChange={() => toggleEvidence(proof.id)}
-                                        />
-                                        <span className={`flex-1 ${isSelected ? "font-medium" : ""}`}>
-                                          {proof.label}
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
+                        <div className="space-y-2 text-sm text-zinc-800">
+                          {[
+                            {
+                              id: "heard_people_say" as PersonaImpactEvidence,
+                              label: "entendu des personnes dire que cette solution serait la bonne",
+                            },
+                            {
+                              id: "interviews_with_persona" as PersonaImpactEvidence,
+                              label: `réalisé des entretiens avec ${persona.name || `Persona ${index + 1}`} sur le problème en question`,
+                            },
+                            {
+                              id: "design_phase" as PersonaImpactEvidence,
+                              label: "réalisé une phase de conception de la solution avec un designer qualifié",
+                            },
+                            {
+                              id: "tested_myself" as PersonaImpactEvidence,
+                              label: "testé la solution moi-même et je la trouve intéressante",
+                            },
+                            {
+                              id: "persona_certified_solution" as PersonaImpactEvidence,
+                              label: `interrogé ${persona.name || `Persona ${index + 1}`} qui vous a certifié que ma solution était la bonne`,
+                            },
+                            {
+                              id: "persona_certified_payment" as PersonaImpactEvidence,
+                              label: `interrogé ${persona.name || `Persona ${index + 1}`} qui vous a certifié qu'il paierait pour cette solution`,
+                            },
+                          ].map((proof) => {
+                            const isSelected = impactData.evidence.includes(proof.id);
+                            return (
+                              <label
+                                key={proof.id}
+                                className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-3 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-5 w-5 cursor-pointer rounded border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
+                                  checked={isSelected}
+                                  onChange={() => toggleEvidence(proof.id)}
+                                />
+                                <span className={`flex-1 ${isSelected ? "font-medium" : ""}`}>
+                                  {proof.label}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-zinc-800">
                           Combien de {persona.name || `Persona ${index + 1}`} avez-vous rencontré ?
                         </label>
                         <div className="flex flex-wrap gap-2">
-                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-900 has-[:checked]:text-zinc-50">
+                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500 has-[:checked]:text-zinc-50">
                             <input
                               type="radio"
                               name={`countMet-${index}`}
@@ -1193,7 +1205,7 @@ export default function QuestionnairePage() {
                             />
                             <span>1 seul</span>
                           </label>
-                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-900 has-[:checked]:text-zinc-50">
+                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500 has-[:checked]:text-zinc-50">
                             <input
                               type="radio"
                               name={`countMet-${index}`}
@@ -1213,7 +1225,7 @@ export default function QuestionnairePage() {
                             />
                             <span>Entre 2 et 5</span>
                           </label>
-                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-900 has-[:checked]:text-zinc-50">
+                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500 has-[:checked]:text-zinc-50">
                             <input
                               type="radio"
                               name={`countMet-${index}`}
@@ -1233,7 +1245,7 @@ export default function QuestionnairePage() {
                             />
                             <span>Entre 5 et 10</span>
                           </label>
-                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-900 has-[:checked]:text-zinc-50">
+                          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-500 has-[:checked]:text-zinc-50">
                             <input
                               type="radio"
                               name={`countMet-${index}`}
@@ -1267,19 +1279,240 @@ export default function QuestionnairePage() {
         const ranges = calculateEffortRanges();
         const budgetMaxValue = Math.max(100, ranges.budgetMax * 1.2);
         const timeMaxValue = Math.max(100, ranges.timeMax * 1.2);
+        const effortFilledPersonas = personas.filter((p) => p.name.trim());
+
+        // Fonction helper pour déterminer l'état d'une brique selon le périmètre
+        // Cette fonction doit être identique à celle du useEffect pour garantir la cohérence
+        const getBrickStatus = (brickId: FunctionalBrick): {
+          visible: boolean;
+          selectable: boolean;
+          disabled: boolean;
+          warning?: string;
+        } => {
+          if (!effortScope) {
+            return { visible: true, selectable: true, disabled: false };
+          }
+
+          if (effortScope === "mvp") {
+            // MVP : certaines briques sont masquées (non visibles)
+            // Selon les spécifications :
+            // - Application web simple : ✅ affichée et sélectionnable
+            // - Gestion des comptes utilisateurs : ⛔️ optionnelle, affichée mais décochée par défaut
+            // - Moteur de calcul simple : ✅ affichée et sélectionnable
+            // - Recherche avancée : ⛔️ masquée
+            // - Matching / recommandation : ⛔️ masquée
+            // - Géolocalisation : ⛔️ masquée
+            // - Notifications : ⛔️ masquée
+            // - Streaming / temps réel : ⛔️ masquée
+            // - Upload de fichiers lourds : ⛔️ masquée
+            // - Scalabilité : ⛔️ masquée
+            // - Sécurité renforcée : ⛔️ masquée
+            // - RGPD avancé : ⛔️ masquée
+            // - Moteur de calcul complexe : ⛔️ masquée (non mentionné dans les spécifications)
+            // - Multi-organisations : ⛔️ masquée (non mentionnée dans les spécifications MVP)
+            const hiddenBricks: FunctionalBrick[] = [
+              "search_advanced",      // Recherche avancée
+              "matching",              // Matching / recommandation
+              "geoloc_simple",         // Géolocalisation
+              "notifications",         // Notifications
+              "streaming",             // Streaming / temps réel
+              "file_upload",           // Upload de fichiers lourds
+              "scalability",           // Scalabilité
+              "security_enhanced",     // Sécurité renforcée
+              "rgpd_advanced",         // RGPD avancé
+              "calc_complex",          // Moteur de calcul complexe
+              "multi_org",             // Multi-organisations (non mentionnée, donc masquée)
+            ];
+            
+            if (hiddenBricks.includes(brickId)) {
+              // Ces briques sont désactivées (grisées) et ne doivent pas être sélectionnables
+              // Elles restent visibles mais sont non cliquables, comme pour V1
+              return { visible: true, selectable: false, disabled: true };
+            }
+            
+            // user_accounts est optionnelle (affichée mais décochée par défaut)
+            // Elle reste visible et sélectionnable, mais sera décochée par le useEffect si sélectionnée
+            if (brickId === "user_accounts") {
+              return { visible: true, selectable: true, disabled: false };
+            }
+            
+            // Toutes les autres briques sont visibles et sélectionnables :
+            // - web_app_simple (Application web simple)
+            // - search_simple (Recherche simple - non mentionnée mais probablement OK)
+            // - calc_simple (Moteur de calcul simple)
+            // - export_data (Export de données - non mentionnée mais probablement OK)
+            return { visible: true, selectable: true, disabled: false };
+          }
+
+          if (effortScope === "v1") {
+            // V1 : certaines briques sont grisées/désactivées
+            const disabledBricks: FunctionalBrick[] = [
+              "multi_org",
+              "calc_complex",
+              "matching",
+              "streaming",
+              "scalability",
+              "rgpd_advanced",
+            ];
+            
+            if (disabledBricks.includes(brickId)) {
+              return {
+                visible: true,
+                selectable: false,
+                disabled: true,
+              };
+            }
+            
+            return { visible: true, selectable: true, disabled: false };
+          }
+
+          // Vision complète : toutes les briques sont disponibles
+          return { visible: true, selectable: true, disabled: false };
+        };
 
         return (
           <section className="space-y-6">
             <div className="space-y-1">
               <h1 className="text-2xl font-semibold tracking-tight">
-                Évaluez l&apos;effort que votre solution requiert
+                Évaluez l&apos;effort que {projectName || "votre solution"} requiert
               </h1>
               <p className="text-sm text-zinc-700">
                 Indiquez l&apos;effort et votre degré de confiance dans celui-ci.
               </p>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Question sur le périmètre */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-base font-semibold text-zinc-900">
+                    Votre estimation concerne :
+                  </h2>
+                  <p className="text-xs text-zinc-600">
+                    Cette question permet de cadrer le périmètre sur lequel vous estimez l&apos;effort.
+                    Un même projet peut avoir des niveaux d&apos;effort très différents selon l&apos;ambition visée.
+                  </p>
+                </div>
+                
+                <fieldset className="space-y-3">
+                  {[
+                    {
+                      value: "mvp",
+                      label: "MVP (Minimum Viable Product)",
+                      tooltip: {
+                        title: "Choix 1 — MVP (Minimum Viable Product)",
+                        description: "Un MVP est une version minimale de votre produit, conçue pour tester une hypothèse clé (problème, usage ou valeur) avec un effort réduit.",
+                        details: "Il ne vise ni l'exhaustivité, ni la robustesse long terme, mais l'apprentissage rapide.",
+                        examples: [
+                          "Process manuel derrière une interface simple",
+                          "Fonctionnalités limitées à un seul cas d'usage",
+                          "Peu ou pas d'automatisation",
+                        ],
+                        intention: "👉 Apprendre si le problème vaut la peine d'être résolu.",
+                      },
+                    },
+                    {
+                      value: "v1",
+                      label: "V1 (Produit utilisable)",
+                      tooltip: {
+                        title: "Choix 2 — V1 (Produit utilisable)",
+                        description: "Une V1 est une première version exploitable par de vrais utilisateurs.",
+                        details: "Elle couvre le cœur de la valeur, avec un niveau de qualité suffisant pour un usage réel, mais sans toutes les fonctionnalités envisagées à terme.",
+                        examples: [
+                          "Parcours utilisateur complet mais simplifié",
+                          "Quelques automatisations clés",
+                          "Gestion basique des erreurs et des cas limites",
+                        ],
+                        intention: "👉 Commencer à délivrer de la valeur de manière fiable.",
+                      },
+                    },
+                    {
+                      value: "vision_complete",
+                      label: "Vision complète",
+                      tooltip: {
+                        title: "Choix 3 — Vision complète",
+                        description: "La vision complète correspond au produit tel que vous l'imaginez à terme :",
+                        details: "fonctionnalités avancées, cas complexes, performance, sécurité, scalabilité, conformité.",
+                        examples: [
+                          "Plateforme multi-utilisateurs mature",
+                          "Fonctionnalités avancées et automatisées",
+                          "Exigences fortes en sécurité, performance et conformité",
+                        ],
+                        intention: "👉 Construire un produit durable et industrialisable.",
+                      },
+                    },
+                  ].map((option) => {
+                    const tooltipKey = `scope-${option.value}`;
+                    const showTooltip = visibleTooltips.has(tooltipKey);
+                    
+                    return (
+                      <div key={option.value} className="relative">
+                        <label className="group flex cursor-pointer items-start gap-3 rounded-lg border-2 border-zinc-200 bg-white p-4 text-sm text-zinc-800 transition-all hover:border-zinc-400 hover:bg-zinc-50 hover:shadow-sm">
+                          <input
+                            type="radio"
+                            className="mt-0.5 h-5 w-5 cursor-pointer border-2 border-zinc-300 text-zinc-900 transition-all focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 checked:border-blue-500 checked:bg-blue-500 hover:border-zinc-500"
+                            checked={effortScope === option.value}
+                            onChange={() => setEffortScope(option.value as EffortScope)}
+                          />
+                          <span className="flex-1">
+                            <span className="block text-base font-semibold">{option.label}</span>
+                            <button
+                              type="button"
+                              className="mt-1 text-xs text-zinc-600 underline hover:text-zinc-900"
+                              onMouseEnter={() => {
+                                setVisibleTooltips((prev) => new Set(prev).add(tooltipKey));
+                              }}
+                              onMouseLeave={() => {
+                                setVisibleTooltips((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(tooltipKey);
+                                  return next;
+                                });
+                              }}
+                            >
+                              En savoir plus
+                            </button>
+                          </span>
+                        </label>
+                        
+                        {/* Tooltip */}
+                        {showTooltip && (
+                          <div className="absolute left-0 top-full z-50 mt-2 w-96 rounded-lg border border-zinc-200 bg-white p-4 shadow-xl">
+                            <div className="space-y-3 text-sm">
+                              <div className="font-semibold text-zinc-900">
+                                {option.tooltip.title}
+                              </div>
+                              <div className="text-zinc-700">
+                                {option.tooltip.description}
+                              </div>
+                              <div className="text-zinc-600">
+                                {option.tooltip.details}
+                              </div>
+                              <div>
+                                <div className="mb-1 font-medium text-zinc-800">Exemples concrets :</div>
+                                <ul className="list-disc space-y-1 pl-5 text-zinc-600">
+                                  {option.tooltip.examples.map((ex, i) => (
+                                    <li key={i}>{ex}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div className="font-medium text-zinc-800">
+                                {option.tooltip.intention}
+                              </div>
+                            </div>
+                            {/* Flèche du tooltip */}
+                            <div className="absolute -top-2 left-8 h-4 w-4 rotate-45 border-l border-t border-zinc-200 bg-white" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </fieldset>
+              </div>
+
+              {/* Sélection des briques fonctionnelles et sections suivantes */}
+              {effortScope && (
+                <>
               <div>
                 <h2 className="mb-3 text-base font-semibold text-zinc-900">
                   Sélectionnez les briques fonctionnelles que votre solution nécessite.
@@ -1290,7 +1523,7 @@ export default function QuestionnairePage() {
                   Ils servent à estimer le niveau de risque, pas à produire un devis.
                 </p>
 
-                <div className="space-y-6">
+                <div className="space-y-6" key={`bricks-${effortScope}`}>
                   <div>
                     <h3 className="mb-2 text-sm font-semibold text-zinc-800">🧱 Socle & structure</h3>
                     <div className="space-y-2">
@@ -1313,30 +1546,47 @@ export default function QuestionnairePage() {
                           cost: "≈ 6 000 – 12 000 €",
                           desc: "Gestion d&apos;espaces, droits avancés, isolation des données.",
                         },
-                      ].map((brick) => (
-                        <label
-                          key={brick.id}
-                          className="flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-50"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5"
-                            checked={selectedBricks.includes(brick.id as FunctionalBrick)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedBricks((prev) => [...prev, brick.id as FunctionalBrick]);
-                              } else {
-                                setSelectedBricks((prev) => prev.filter((b) => b !== brick.id));
-                              }
-                            }}
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium">{brick.label}</div>
-                            <div className="text-xs text-zinc-600">{brick.cost}</div>
-                            <div className="mt-0.5 text-xs text-zinc-500">{brick.desc}</div>
-                          </div>
-                        </label>
-                      ))}
+                      ].map((brick) => {
+                        const brickId = brick.id as FunctionalBrick;
+                        // Forcer l'utilisation de la valeur actuelle de effortScope
+                        const currentScope = effortScope;
+                        const status = getBrickStatus(brickId);
+                        
+                        // Les briques désactivées sont maintenant visibles mais grisées (comme pour V1)
+                        // if (!status.visible) return null; // Plus besoin de masquer, on désactive
+                        
+                        const isSelected = selectedBricks.includes(brickId);
+                        const isDisabled = status.disabled || !status.selectable;
+                        
+                        return (
+                          <label
+                            key={brick.id}
+                            className={`flex items-start gap-2 rounded-lg border p-3 text-sm transition ${
+                              isDisabled
+                                ? "border-zinc-200 bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                                : "border-zinc-200 bg-white text-zinc-800 cursor-pointer hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={isSelected && !isDisabled}
+                              disabled={isDisabled}
+                              onChange={(e) => {
+                                if (e.target.checked && !isDisabled) {
+                                  setSelectedBricks((prev) => [...prev, brickId]);
+                                } else if (!isDisabled) {
+                                  setSelectedBricks((prev) => prev.filter((b) => b !== brickId));
+                                }
+                              }}
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium">{brick.label}</div>
+                              <div className="text-xs text-zinc-600">{brick.cost}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1368,30 +1618,47 @@ export default function QuestionnairePage() {
                           cost: "≈ 8 000 – 15 000 €",
                           desc: "Pondérations, scénarios, règles configurables, simulations.",
                         },
-                      ].map((brick) => (
-                        <label
-                          key={brick.id}
-                          className="flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-50"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5"
-                            checked={selectedBricks.includes(brick.id as FunctionalBrick)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedBricks((prev) => [...prev, brick.id as FunctionalBrick]);
-                              } else {
-                                setSelectedBricks((prev) => prev.filter((b) => b !== brick.id));
-                              }
-                            }}
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium">{brick.label}</div>
-                            <div className="text-xs text-zinc-600">{brick.cost}</div>
-                            {brick.desc && <div className="mt-0.5 text-xs text-zinc-500">{brick.desc}</div>}
-                          </div>
-                        </label>
-                      ))}
+                      ].map((brick) => {
+                        const brickId = brick.id as FunctionalBrick;
+                        // Forcer l'utilisation de la valeur actuelle de effortScope
+                        const currentScope = effortScope;
+                        const status = getBrickStatus(brickId);
+                        
+                        // Les briques désactivées sont maintenant visibles mais grisées (comme pour V1)
+                        // if (!status.visible) return null; // Plus besoin de masquer, on désactive
+                        
+                        const isSelected = selectedBricks.includes(brickId);
+                        const isDisabled = status.disabled || !status.selectable;
+                        
+                        return (
+                          <label
+                            key={brick.id}
+                            className={`flex items-start gap-2 rounded-lg border p-3 text-sm transition ${
+                              isDisabled
+                                ? "border-zinc-200 bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                                : "border-zinc-200 bg-white text-zinc-800 cursor-pointer hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={isSelected && !isDisabled}
+                              disabled={isDisabled}
+                              onChange={(e) => {
+                                if (e.target.checked && !isDisabled) {
+                                  setSelectedBricks((prev) => [...prev, brickId]);
+                                } else if (!isDisabled) {
+                                  setSelectedBricks((prev) => prev.filter((b) => b !== brickId));
+                                }
+                              }}
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium">{brick.label}</div>
+                              <div className="text-xs text-zinc-600">{brick.cost}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1425,30 +1692,47 @@ export default function QuestionnairePage() {
                           cost: "≈ 2 000 – 5 000 €",
                           desc: "",
                         },
-                      ].map((brick) => (
-                        <label
-                          key={brick.id}
-                          className="flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-50"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5"
-                            checked={selectedBricks.includes(brick.id as FunctionalBrick)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedBricks((prev) => [...prev, brick.id as FunctionalBrick]);
-                              } else {
-                                setSelectedBricks((prev) => prev.filter((b) => b !== brick.id));
-                              }
-                            }}
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium">{brick.label}</div>
-                            <div className="text-xs text-zinc-600">{brick.cost}</div>
-                            {brick.desc && <div className="mt-0.5 text-xs text-zinc-500">{brick.desc}</div>}
-                          </div>
-                        </label>
-                      ))}
+                      ].map((brick) => {
+                        const brickId = brick.id as FunctionalBrick;
+                        // Forcer l'utilisation de la valeur actuelle de effortScope
+                        const currentScope = effortScope;
+                        const status = getBrickStatus(brickId);
+                        
+                        // Les briques désactivées sont maintenant visibles mais grisées (comme pour V1)
+                        // if (!status.visible) return null; // Plus besoin de masquer, on désactive
+                        
+                        const isSelected = selectedBricks.includes(brickId);
+                        const isDisabled = status.disabled || !status.selectable;
+                        
+                        return (
+                          <label
+                            key={brick.id}
+                            className={`flex items-start gap-2 rounded-lg border p-3 text-sm transition ${
+                              isDisabled
+                                ? "border-zinc-200 bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                                : "border-zinc-200 bg-white text-zinc-800 cursor-pointer hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={isSelected && !isDisabled}
+                              disabled={isDisabled}
+                              onChange={(e) => {
+                                if (e.target.checked && !isDisabled) {
+                                  setSelectedBricks((prev) => [...prev, brickId]);
+                                } else if (!isDisabled) {
+                                  setSelectedBricks((prev) => prev.filter((b) => b !== brickId));
+                                }
+                              }}
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium">{brick.label}</div>
+                              <div className="text-xs text-zinc-600">{brick.cost}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1470,30 +1754,47 @@ export default function QuestionnairePage() {
                           cost: "≈ 3 000 – 6 000 €",
                           desc: "",
                         },
-                      ].map((brick) => (
-                        <label
-                          key={brick.id}
-                          className="flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-50"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5"
-                            checked={selectedBricks.includes(brick.id as FunctionalBrick)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedBricks((prev) => [...prev, brick.id as FunctionalBrick]);
-                              } else {
-                                setSelectedBricks((prev) => prev.filter((b) => b !== brick.id));
-                              }
-                            }}
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium">{brick.label}</div>
-                            <div className="text-xs text-zinc-600">{brick.cost}</div>
-                            {brick.desc && <div className="mt-0.5 text-xs text-zinc-500">{brick.desc}</div>}
-                          </div>
-                        </label>
-                      ))}
+                      ].map((brick) => {
+                        const brickId = brick.id as FunctionalBrick;
+                        // Forcer l'utilisation de la valeur actuelle de effortScope
+                        const currentScope = effortScope;
+                        const status = getBrickStatus(brickId);
+                        
+                        // Les briques désactivées sont maintenant visibles mais grisées (comme pour V1)
+                        // if (!status.visible) return null; // Plus besoin de masquer, on désactive
+                        
+                        const isSelected = selectedBricks.includes(brickId);
+                        const isDisabled = status.disabled || !status.selectable;
+                        
+                        return (
+                          <label
+                            key={brick.id}
+                            className={`flex items-start gap-2 rounded-lg border p-3 text-sm transition ${
+                              isDisabled
+                                ? "border-zinc-200 bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                                : "border-zinc-200 bg-white text-zinc-800 cursor-pointer hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={isSelected && !isDisabled}
+                              disabled={isDisabled}
+                              onChange={(e) => {
+                                if (e.target.checked && !isDisabled) {
+                                  setSelectedBricks((prev) => [...prev, brickId]);
+                                } else if (!isDisabled) {
+                                  setSelectedBricks((prev) => prev.filter((b) => b !== brickId));
+                                }
+                              }}
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium">{brick.label}</div>
+                              <div className="text-xs text-zinc-600">{brick.cost}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1521,30 +1822,47 @@ export default function QuestionnairePage() {
                           cost: "≈ 5 000 – 10 000 €",
                           desc: "",
                         },
-                      ].map((brick) => (
-                        <label
-                          key={brick.id}
-                          className="flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-800 transition hover:bg-zinc-50 has-[:checked]:border-zinc-900 has-[:checked]:bg-zinc-50"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5"
-                            checked={selectedBricks.includes(brick.id as FunctionalBrick)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedBricks((prev) => [...prev, brick.id as FunctionalBrick]);
-                              } else {
-                                setSelectedBricks((prev) => prev.filter((b) => b !== brick.id));
-                              }
-                            }}
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium">{brick.label}</div>
-                            <div className="text-xs text-zinc-600">{brick.cost}</div>
-                            {brick.desc && <div className="mt-0.5 text-xs text-zinc-500">{brick.desc}</div>}
-                          </div>
-                        </label>
-                      ))}
+                      ].map((brick) => {
+                        const brickId = brick.id as FunctionalBrick;
+                        // Forcer l'utilisation de la valeur actuelle de effortScope
+                        const currentScope = effortScope;
+                        const status = getBrickStatus(brickId);
+                        
+                        // Les briques désactivées sont maintenant visibles mais grisées (comme pour V1)
+                        // if (!status.visible) return null; // Plus besoin de masquer, on désactive
+                        
+                        const isSelected = selectedBricks.includes(brickId);
+                        const isDisabled = status.disabled || !status.selectable;
+                        
+                        return (
+                          <label
+                            key={brick.id}
+                            className={`flex items-start gap-2 rounded-lg border p-3 text-sm transition ${
+                              isDisabled
+                                ? "border-zinc-200 bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                                : "border-zinc-200 bg-white text-zinc-800 cursor-pointer hover:bg-zinc-50 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={isSelected && !isDisabled}
+                              disabled={isDisabled}
+                              onChange={(e) => {
+                                if (e.target.checked && !isDisabled) {
+                                  setSelectedBricks((prev) => [...prev, brickId]);
+                                } else if (!isDisabled) {
+                                  setSelectedBricks((prev) => prev.filter((b) => b !== brickId));
+                                }
+                              }}
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium">{brick.label}</div>
+                              <div className="text-xs text-zinc-600">{brick.cost}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1589,7 +1907,7 @@ export default function QuestionnairePage() {
                           const val = Number(e.target.value);
                           if (val <= budgetMax) setBudgetMin(val);
                         }}
-                        className="absolute top-0 h-2 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-zinc-900 [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-zinc-900 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
+                        className="absolute top-0 h-2 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
                       />
                       <input
                         type="range"
@@ -1600,7 +1918,7 @@ export default function QuestionnairePage() {
                           const val = Number(e.target.value);
                           if (val >= budgetMin) setBudgetMax(val);
                         }}
-                        className="absolute top-0 h-2 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-zinc-900 [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-zinc-900 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
+                        className="absolute top-0 h-2 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
                       />
                     </div>
                   </div>
@@ -1638,7 +1956,7 @@ export default function QuestionnairePage() {
                           const val = Number(e.target.value);
                           if (val <= timeMax) setTimeMin(val);
                         }}
-                        className="absolute top-0 h-2 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-zinc-900 [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-zinc-900 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
+                        className="absolute top-0 h-2 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
                       />
                       <input
                         type="range"
@@ -1649,7 +1967,7 @@ export default function QuestionnairePage() {
                           const val = Number(e.target.value);
                           if (val >= timeMin) setTimeMax(val);
                         }}
-                        className="absolute top-0 h-2 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-zinc-900 [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-zinc-900 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
+                        className="absolute top-0 h-2 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:relative [&::-webkit-slider-thumb]:z-20 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-sm [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:shadow-sm"
                       />
                     </div>
                   </div>
@@ -1663,7 +1981,7 @@ export default function QuestionnairePage() {
                 <select
                   value={effortConfidence}
                   onChange={(e) => setEffortConfidence(e.target.value as EffortConfidence)}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">Sélectionnez une option</option>
                   <option value="very_uncertain">Très incertain</option>
@@ -1672,6 +1990,8 @@ export default function QuestionnairePage() {
                   <option value="very_sure">Très sûr</option>
                 </select>
               </div>
+                </>
+              )}
             </div>
           </section>
         );
@@ -1694,7 +2014,7 @@ export default function QuestionnairePage() {
                 <select
                   value={projectStage}
                   onChange={(e) => setProjectStage(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">Je préfère ne pas préciser</option>
                   <option value="idea">Idée</option>
@@ -1709,7 +2029,7 @@ export default function QuestionnairePage() {
                 <select
                   value={orgType}
                   onChange={(e) => setOrgType(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">Je préfère ne pas préciser</option>
                   <option value="startup">Startup</option>
@@ -1754,7 +2074,7 @@ export default function QuestionnairePage() {
                   value={contextNotes}
                   onChange={(e) => setContextNotes(e.target.value)}
                   rows={4}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   placeholder="Précisez par exemple le contexte interne, les enjeux politiques, ou toute information que vous jugez utile."
                 />
               </div>
@@ -1768,94 +2088,235 @@ export default function QuestionnairePage() {
   };
 
   const handleQuit = () => {
+    // Nettoyer le sessionStorage et réinitialiser tous les états
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("riceCookerProjectName");
+    }
+    // Réinitialiser tous les états
+    setProjectName("");
+    setProjectNameDraft("");
+    setProjectNameError(null);
+    setCurrentStepIndex(0);
+    setProblemClarity("");
+    setProblemApproach("");
+    setInterviewDepth("");
+    setValueExpectations("");
+    setAlternativeSolutions("");
+    setPersonas([{ name: "", confidence: "" }]);
+    setPersonaImpacts({});
+    setSelectedBricks([]);
+    setBudgetMin(0);
+    setBudgetMax(100);
+    setTimeMin(0);
+    setTimeMax(100);
+    setEffortConfidence("");
+    setNoEffortEstimate(false);
+    setEffortScope("");
+    setProjectStage("");
+    setOrgType("");
+    setHasPitchDeck(false);
+    setHasInvestors(false);
+    setHasPayingCustomers(false);
+    setContextNotes("");
+    setError(null);
     router.push("/");
+  };
+
+  const confirmProjectName = () => {
+    const name = projectNameDraft.trim();
+    if (name.length < 2) {
+      setProjectNameError("Merci d’indiquer un nom de projet (au moins 2 caractères).");
+      return;
+    }
+    setProjectNameError(null);
+    setProjectName(name);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("riceCookerProjectName", name);
+    }
   };
 
   const isLastStep = currentStepIndex === totalSteps - 1;
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
+      {/* Modale: nom du projet (obligatoire) */}
+      {!projectName && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl md:p-6">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                Démarrage
+              </p>
+              <h2 className="text-xl font-semibold tracking-tight">
+                Donnez un nom à votre projet
+              </h2>
+              <p className="text-sm text-zinc-600">
+                Ce nom sera réutilisé dans le questionnaire et dans le brief de fin.
+              </p>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <label className="block text-sm font-medium text-zinc-800">
+                Nom du projet <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={projectNameDraft}
+                onChange={(e) => {
+                  setProjectNameDraft(e.target.value);
+                  setProjectNameError(null);
+                }}
+                placeholder="Ex. « PRICE COOKER », « Mon appli de gestion », etc."
+                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                autoFocus
+              />
+              {projectNameError && (
+                <p className="text-sm text-red-600" role="alert">
+                  {projectNameError}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleQuit}
+                className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 shadow-sm transition hover:bg-zinc-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmProjectName}
+                className="rounded-full bg-blue-500 px-4 py-2 text-sm font-medium text-zinc-50 shadow-sm transition hover:bg-blue-600"
+              >
+                Continuer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
-        className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-4 py-8 md:px-6 md:py-10"
+        className="flex min-h-screen flex-col"
       >
-        <header className="flex items-center justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-[11px] text-zinc-500">
-              {currentStepIndex + 1}/{totalSteps}
-            </p>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              {isProblemPhase ? "Problème" : "Solution"}
-            </p>
-            <p className="text-sm font-medium text-zinc-900">{stepLabel(currentStep)}</p>
+        {/* Header - Full width */}
+        <header className="w-full border-b border-zinc-200 bg-white">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 md:px-8">
+            <div className="flex items-center gap-6">
+              <p className="text-base font-medium text-zinc-900">
+                Évaluation de {projectName || "votre projet"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleQuit}
+              className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-zinc-800"
+            >
+              Quitter
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleQuit}
-            className="text-xs font-medium text-zinc-500 underline-offset-4 hover:underline"
-          >
-            Quitter
-          </button>
         </header>
 
-        <div className="space-y-1">
-          <div className="flex gap-1 rounded-full bg-zinc-200 p-1">
-            {Array.from({ length: totalSteps }, (_, index) => {
-              const stepId = steps[index];
-              const isPastOrCurrent = index <= currentStepIndex;
-              const inProblemPhase = problemPhaseSteps.includes(stepId);
-              const baseColor = inProblemPhase ? "bg-amber-400" : "bg-emerald-400";
-              const mutedColor = inProblemPhase ? "bg-amber-200" : "bg-emerald-200";
-
-              return (
-                <div
-                  // eslint-disable-next-line react/no-array-index-key
-                  key={index}
-                  className={`h-2 flex-1 rounded-full transition-all ${
-                    isPastOrCurrent ? baseColor : mutedColor
-                  }`}
-                />
-              );
-            })}
+        {/* Stepper - Full width */}
+        <div className="w-full bg-white pb-6 pt-4">
+          <div className="mx-auto max-w-5xl px-4 md:px-8">
+            {/* Labels */}
+            <div className="mb-3 flex justify-between">
+              {steps.map((stepId, index) => {
+                const isActive = index === currentStepIndex;
+                const isPast = index < currentStepIndex;
+                return (
+                  <div
+                    key={stepId}
+                    className={`flex-1 text-center text-xs transition-all ${
+                      isActive
+                        ? "font-semibold text-zinc-900"
+                        : isPast
+                          ? "font-medium text-zinc-600"
+                          : "font-normal text-zinc-400"
+                    }`}
+                  >
+                    <span className="hidden lg:inline">{stepLabel(stepId)}</span>
+                    <span className="lg:hidden">{index + 1}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Progress bar with dots */}
+            <div className="relative flex items-center">
+              {/* Background track */}
+              <div className="absolute left-0 right-0 h-1 rounded-full bg-zinc-200" />
+              {/* Active track */}
+              <div
+                className="absolute left-0 h-1 rounded-full bg-blue-500 transition-all duration-300"
+                style={{
+                  width: `${(currentStepIndex / (totalSteps - 1)) * 100}%`,
+                }}
+              />
+              {/* Dots */}
+              <div className="relative z-10 flex w-full justify-between">
+                {steps.map((stepId, index) => {
+                  const isPastOrCurrent = index <= currentStepIndex;
+                  return (
+                    <div
+                      key={stepId}
+                      className={`h-3 w-3 rounded-full border-2 transition-all ${
+                        isPastOrCurrent
+                          ? "border-blue-500 bg-white"
+                          : "border-zinc-300 bg-white"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
-        <main className="flex-1 space-y-4 rounded-2xl bg-white p-5 shadow-sm md:p-6">
-          {renderStep()}
-        </main>
+        {/* Main content - Centered with max width */}
+        <div className="flex-1 px-4 py-6 md:px-8 md:py-8">
+          <main className="mx-auto max-w-3xl space-y-4 rounded-2xl bg-white p-5 shadow-sm md:p-6">
+            {renderStep()}
+          </main>
 
-        {error && (
-          <p className="text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
+          {error && (
+            <p className="mx-auto mt-4 max-w-3xl text-sm text-red-600" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
 
-        <footer className="flex items-center justify-between border-t border-zinc-200 pt-4">
-          <button
-            type="button"
-            onClick={goPrevious}
-            disabled={currentStepIndex === 0}
-            className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Précédent
-          </button>
-
-          {isLastStep ? (
-            <button
-              type="submit"
-              className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-zinc-50 shadow-sm transition hover:bg-zinc-800"
-            >
-              Voir mon résultat
-            </button>
-          ) : (
+        {/* Footer - Full width */}
+        <footer className="w-full border-t border-zinc-200 bg-white">
+          <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 md:px-8">
             <button
               type="button"
-              onClick={handleNextClick}
-              className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-zinc-50 shadow-sm transition hover:bg-zinc-800"
+              onClick={goPrevious}
+              disabled={currentStepIndex === 0}
+              className="rounded-full border border-zinc-300 bg-white px-5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Suivant
+              Précédent
             </button>
-          )}
+
+            {isLastStep ? (
+              <button
+                type="submit"
+                className="rounded-full bg-blue-500 px-6 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-600"
+              >
+                Voir mon résultat
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleNextClick}
+                className="rounded-full bg-blue-500 px-6 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-600"
+              >
+                Suivant
+              </button>
+            )}
+          </div>
         </footer>
       </form>
     </div>

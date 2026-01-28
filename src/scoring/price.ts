@@ -50,6 +50,8 @@ type PersonaImpactData = {
   countMet: PersonaCountMet;
 };
 
+type EffortScope = "mvp" | "v1" | "vision_complete" | "";
+
 type FormData = {
   problemClarity: ProblemClarity;
   problemApproach: ProblemApproach;
@@ -65,6 +67,7 @@ type FormData = {
   timeMax: number;
   effortConfidence: EffortConfidence;
   noEffortEstimate: boolean;
+  effortScope: EffortScope;
 };
 
 type PriceResult = {
@@ -290,7 +293,18 @@ function computeE(data: FormData, config: ScoringConfig, maxScores: { E_max: num
     throw new Error(`Valeur inconnue pour effortConfidence: ${data.effortConfidence}`);
   }
 
-  const E = (budgetFactor + timeAddon) * brickComplexity * confidenceMult;
+  let E = (budgetFactor + timeAddon) * brickComplexity * confidenceMult;
+  
+  // Multiplicateur selon le périmètre (MVP/V1/Vision complète)
+  const scopeMultipliers: Record<EffortScope, number> = {
+    mvp: 0.7,
+    v1: 1.0,
+    vision_complete: 1.3,
+    "": 1.0,
+  };
+  const scopeMultiplier = scopeMultipliers[data.effortScope || ""] || 1.0;
+  E = E * scopeMultiplier;
+  
   return clamp(E, config.bounds.E.min, maxScores.E_max);
 }
 

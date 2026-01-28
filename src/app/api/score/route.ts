@@ -57,6 +57,7 @@ type RequestBody = {
   timeMax: number;
   effortConfidence: EffortConfidence;
   noEffortEstimate: boolean;
+  effortScope: "mvp" | "v1" | "vision_complete" | "";
 };
 
 function bandToRiskLevel(band: "high_risk" | "medium_risk" | "low_risk"): string {
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
       timeMax: body.timeMax || 0,
       effortConfidence: body.effortConfidence || "",
       noEffortEstimate: body.noEffortEstimate || false,
+      effortScope: body.effortScope || "",
     });
 
     return NextResponse.json(

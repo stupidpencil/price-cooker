@@ -1,19 +1,19 @@
 {
   "problem": {
     "clarity": {
-      "clear_problem": 1.25,
+      "clear_problem": 0.75,
       "solution_first": 0.5,
       "default": 0.4
     },
     "approach": {
-      "structured_interviews": 1,
-      "informal_discussions": 0.7,
-      "conviction_only": 0.3,
+      "structured_interviews": 0.85,
+      "informal_discussions": 0.45,
+      "conviction_only": 0.2,
       "default": 0.4
     },
     "depth": {
-      "dug_deeper": 1,
-      "listened_only": 0.75,
+      "dug_deeper": 0.85,
+      "listened_only": 0.5,
       "default": 0.85
     },
     "alternatives": {
@@ -24,9 +24,9 @@
       "default": 0.75
     },
     "weights": {
-      "clarity": 0.4,
-      "approach": 0.3,
-      "depth": 0.2,
+      "clarity": 0.3,
+      "approach": 0.25,
+      "depth": 0.25,
       "alternatives": 0.2
     }
   },
@@ -43,7 +43,7 @@
       "1": 0.7,
       "2": 0.85,
       "3": 0.95,
-      "4+": 1
+      "4+": 0.95
     }
   },
   "impact": {

@@ -323,7 +323,7 @@ export default function AdminPage() {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-50 shadow-sm transition hover:bg-zinc-800 disabled:opacity-50"
+              className="rounded-full bg-blue-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-600 disabled:opacity-50"
             >
               {saving ? "Sauvegarde..." : "Sauvegarder"}
             </button>
@@ -380,14 +380,14 @@ export default function AdminPage() {
                 onClick={() => setSelectedTestProject(key as TestProject)}
                 className={`rounded-xl border-2 p-4 text-left transition-all ${
                   selectedTestProject === key
-                    ? "border-zinc-900 bg-zinc-50 shadow-md"
+                    ? "border-blue-500 bg-blue-50 shadow-md"
                     : "border-zinc-200 bg-white hover:border-zinc-300"
                 }`}
               >
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="font-semibold text-zinc-900">{project.name}</h3>
                   {selectedTestProject === key && (
-                    <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs text-white">
+                    <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
                       Sélectionné
                     </span>
                   )}

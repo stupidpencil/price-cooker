@@ -43,6 +43,8 @@ type FunctionalBrick =
   | "rgpd_advanced"
   | "scalability";
 
+type EffortScope = "mvp" | "v1" | "vision_complete" | "";
+
 type RequestBody = {
   testData: {
     problemClarity: "clear_problem" | "solution_first" | "";
@@ -59,6 +61,7 @@ type RequestBody = {
     timeMax: number;
     effortConfidence: EffortConfidence;
     noEffortEstimate: boolean;
+    effortScope?: EffortScope;
   };
   config: ScoringConfig;
 };
@@ -107,6 +110,7 @@ export async function POST(request: Request) {
         timeMax: body.testData.timeMax || 0,
         effortConfidence: body.testData.effortConfidence || "",
         noEffortEstimate: body.testData.noEffortEstimate || false,
+        effortScope: (body.testData.effortScope as "" | "mvp" | "v1" | "vision_complete") || "",
       });
 
       // Restaurer la config originale

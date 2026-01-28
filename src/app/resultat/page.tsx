@@ -1,5 +1,7 @@
 "use client";
 
+import { ScoreGauge, TONE_COLORS } from "@/components/ScoreGauge";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useMemo, useEffect, useState, Suspense } from "react";
 import { getMaxScores } from "@/scoring/max-scores";
@@ -89,86 +91,81 @@ function ResultPageContent() {
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="text-xs font-medium text-zinc-500 underline-offset-4 hover:underline"
+            className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
           >
             Revenir à l&apos;accueil
           </button>
         </header>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm md:p-6">
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                Score de maîtrise du risque
-              </p>
-              <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
-                {message.title}
-              </h1>
-              <p className="text-sm text-zinc-700">
-                Niveau global : <span className="font-semibold">{riskLevel}</span>
-              </p>
-            </div>
-            <div className="flex flex-col items-center justify-center gap-1">
-              <div className="relative flex items-center gap-2">
-                <div
-                  className={`flex h-24 w-24 items-center justify-center rounded-full border-4 text-2xl font-semibold ${
-                    message.tone === "red"
-                      ? "border-red-500 text-red-600"
-                      : message.tone === "amber"
-                        ? "border-amber-500 text-amber-600"
-                        : "border-emerald-500 text-emerald-600"
-                  }`}
-                >
-                  {scorePercent.toFixed(1)}%
-                </div>
-                <button
-                  type="button"
-                  onMouseEnter={() => setShowTooltip(true)}
-                  onMouseLeave={() => setShowTooltip(false)}
-                  onClick={() => setShowTooltip(!showTooltip)}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-500 transition hover:border-zinc-400 hover:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2"
-                  aria-label="Comment lire ce résultat ?"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                    className="h-4 w-4"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
-                    />
-                  </svg>
-                </button>
-                {showTooltip && (
-                  <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-zinc-200 bg-white p-4 shadow-lg">
-                    <h3 className="mb-2 text-sm font-semibold text-zinc-900">
-                      Comment lire ce résultat ?
-                    </h3>
-                    <ul className="list-disc space-y-1 pl-5 text-xs text-zinc-700">
-                      <li>
-                        Le score se concentre sur le <strong>risque de développement</strong> (problème,
-                        reach, preuves, effort), pas sur le potentiel business.
-                      </li>
-                      <li>
-                        Une <strong>maîtrise faible</strong> (score bas) ne veut pas dire que votre idée
-                        est mauvaise, mais qu&apos;il reste beaucoup d&apos;inconnu.
-                      </li>
-                      <li>
-                        L&apos;objectif est de vous aider à <strong>prioriser vos prochaines
-                        actions</strong> avant d&apos;investir du temps et de l&apos;argent.
-                      </li>
-                    </ul>
-                  </div>
-                )}
+          <div className="w-full">
+            <h1 className="text-2xl font-bold tracking-tight text-zinc-900 md:text-3xl">
+              Score de maîtrise du risque
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              {message.title}
+              {message.tone === "red" && " 😟"}
+              {message.tone === "amber" && " 😐"}
+              {message.tone === "green" && " 🙂"}
+            </p>
+
+            <div className="mt-6 w-full">
+              <div className="flex flex-row flex-wrap items-center justify-center gap-4">
+                <ScoreGauge scorePercent={scorePercent} tone={message.tone} />
+                {(() => {
+                  const c = TONE_COLORS[message.tone];
+                  return (
+                    <div
+                      className="group relative w-fit"
+                      onMouseEnter={() => setShowTooltip(true)}
+                      onMouseLeave={() => setShowTooltip(false)}
+                    >
+                      <div
+                        className="flex w-fit items-center gap-2 rounded-xl border-2 p-4 text-sm font-medium transition"
+                        style={{
+                          backgroundColor: c.buttonBg,
+                          borderColor: c.buttonBorder,
+                          color: c.buttonText,
+                        }}
+                        role="status"
+                        aria-label={riskLevel}
+                      >
+                        <span className="font-semibold">{riskLevel}</span>
+                        <span
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: c.buttonBorder, color: "white" }}
+                          aria-hidden
+                        >
+                          i
+                        </span>
+                      </div>
+                      {showTooltip && (
+                        <div
+                          className="absolute left-1/2 top-full z-50 mt-2 w-80 -translate-x-1/2 rounded-lg border-2 bg-white p-4 shadow-lg"
+                          style={{ borderColor: c.buttonBorder }}
+                          role="tooltip"
+                        >
+                          <h3 className="mb-2 text-sm font-semibold text-zinc-900">Comment lire ce résultat ?</h3>
+                          <ul className="list-disc space-y-1 pl-5 text-xs text-zinc-700">
+                            <li>
+                              Le score se concentre sur le <strong>risque de développement</strong> (problème,
+                              reach, preuves, effort), pas sur le potentiel business.
+                            </li>
+                            <li>
+                              Une <strong>maîtrise faible</strong> (score bas) ne veut pas dire que votre idée
+                              est mauvaise, mais qu&apos;il reste beaucoup d&apos;inconnu.
+                            </li>
+                            <li>
+                              L&apos;objectif est de vous aider à <strong>prioriser vos prochaines
+                              actions</strong> avant d&apos;investir du temps et de l&apos;argent.
+                            </li>
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
-              <p className="text-xs text-zinc-500">
-                Plus le pourcentage est élevé, plus le risque est maîtrisé.
-              </p>
             </div>
           </div>
         </section>
@@ -187,9 +184,6 @@ function ResultPageContent() {
             <div className="space-y-4">
               {/* Dimensions positives */}
               <div className="space-y-3">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-emerald-700">
-                  Facteurs positifs (plus élevés = mieux)
-                </h3>
                 {(() => {
                   // Calculer les scores max réellement atteignables dynamiquement
                   const maxScores = getMaxScores();
@@ -258,9 +252,6 @@ function ResultPageContent() {
                 
                 return (
                   <div className="space-y-3 border-t border-zinc-200 pt-4">
-                    <h3 className="text-xs font-medium uppercase tracking-wide text-red-700">
-                      Facteur pénalisant (plus élevé = plus de risque)
-                    </h3>
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
@@ -288,7 +279,7 @@ function ResultPageContent() {
                         </div>
                       </div>
                       <p className="text-xs text-zinc-500">
-                        Plus E est élevé, plus la pénalité appliquée au score est forte. La pénalité est normalisée pour réduire l&apos;impact et améliorer la granularité.
+                        Plus E est élevé, plus la pénalité appliquée au score est forte.
                       </p>
                     </div>
                   </div>
@@ -297,18 +288,19 @@ function ResultPageContent() {
             </div>
             
             {/* Formule de calcul */}
-            <div className="mt-4 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600">
+              <div>
                 <p className="font-medium text-zinc-700 mb-1">Formule de calcul :</p>
                 <p className="font-mono text-zinc-800">
                   Score = 100 × (combinaison_hybride(P, R, I, C)^1.15) × (1 - pénalité_E)
                 </p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Utilisation d&apos;une combinaison hybride (70% arithmétique + 30% géométrique) élevée à la puissance 1.15 
-                  pour amplifier modérément les différences et créer une meilleure distribution. La pénalité E (jusqu&apos;à 30%) réduit le score proportionnellement.
-                </p>
-                <p className="mt-2 text-zinc-500">
-                  Votre score : <strong className="text-zinc-700">{scorePercent.toFixed(1)}%</strong> (arrondi à 1 décimale pour plus de granularité)
-                </p>
+              </div>
+              <Link
+                href="/methodologie"
+                className="shrink-0 rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+              >
+                Méthodologie
+              </Link>
             </div>
           </section>
         )}
@@ -332,7 +324,7 @@ function ResultPageContent() {
             <button
               type="button"
               onClick={handleContact}
-              className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-zinc-50 shadow-sm transition hover:bg-zinc-800"
+              className="rounded-full bg-blue-500 px-5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-600"
             >
               Contacter un pro
             </button>
