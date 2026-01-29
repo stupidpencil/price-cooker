@@ -173,11 +173,12 @@ function computeEMax(config: ScoringConfig): number {
 }
 
 /**
- * Calcule tous les scores maximums réellement atteignables
+ * Calcule tous les scores maximums réellement atteignables.
+ * @param configOverride - Si fourni, utilise cette config (ex: test admin) au lieu de getConfig().
  */
-export function getMaxScores(): MaxScores {
-  const config = getConfig();
-  
+export function getMaxScores(configOverride?: ScoringConfig): MaxScores {
+  const config = configOverride ?? getConfig();
+
   return {
     P: computePMax(config),
     R: computeRMax(config),

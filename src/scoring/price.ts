@@ -372,11 +372,12 @@ function computeRecommendations(
 }
 
 // Fonction principale
-export function computePriceScore(data: FormData): PriceResult {
-  const config = getConfig();
+/** @param configOverride - Si fourni (ex: API test admin), utilise cette config au lieu de getConfig() — évite l'écriture disque en prod (Vercel read-only). */
+export function computePriceScore(data: FormData, configOverride?: ScoringConfig): PriceResult {
+  const config = configOverride ?? getConfig();
   let maxScores;
   try {
-    maxScores = getMaxScores(); // Calculer une seule fois les max théoriques
+    maxScores = getMaxScores(config);
   } catch (error) {
     console.error("[computePriceScore] Erreur dans getMaxScores():", error);
     throw new Error(`Erreur lors du calcul des scores maximums: ${error instanceof Error ? error.message : String(error)}`);

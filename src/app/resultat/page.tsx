@@ -6,23 +6,30 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useMemo, useEffect, useState, Suspense } from "react";
 import { getMaxScores } from "@/scoring/max-scores";
 
-function getMessage(scorePercent: number, riskLevel: string): { title: string; tone: "red" | "amber" | "green" } {
-  if (scorePercent <= 39) {
-    return {
-      title: "Aïe, votre idée est très risquée dans son état actuel.",
-      tone: "red",
-    };
+/** Ton et message dérivés du niveau de risque (API), pas du score. Garantit la cohérence affichage / banding. */
+function getMessage(riskLevel: string): { title: string; tone: "red" | "amber" | "green" } {
+  switch (riskLevel) {
+    case "Risque élevé":
+      return {
+        title: "Aïe, votre idée est très risquée dans son état actuel.",
+        tone: "red",
+      };
+    case "Risque modéré":
+      return {
+        title: "Votre idée repose sur des bases intéressantes mais encore fragiles.",
+        tone: "amber",
+      };
+    case "Risque maîtrisé":
+      return {
+        title: "Vous avez posé des bases solides. Le risque est globalement maîtrisé.",
+        tone: "green",
+      };
+    default:
+      return {
+        title: "Votre idée repose sur des bases intéressantes mais encore fragiles.",
+        tone: "amber",
+      };
   }
-  if (scorePercent <= 69) {
-    return {
-      title: "Votre idée repose sur des bases intéressantes mais encore fragiles.",
-      tone: "amber",
-    };
-  }
-  return {
-    title: "Vous avez posé des bases solides. Le risque est globalement maîtrisé.",
-    tone: "green",
-  };
 }
 
 function ResultPageContent() {
@@ -65,7 +72,7 @@ function ResultPageContent() {
     }
   }, []);
 
-  const message = getMessage(scorePercent, riskLevel);
+  const message = getMessage(riskLevel);
 
   const handleExport = () => {
     if (typeof window === "undefined") return;

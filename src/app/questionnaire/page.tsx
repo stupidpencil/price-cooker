@@ -2203,7 +2203,7 @@ export default function QuestionnairePage() {
       >
         {/* Header - Full width */}
         <header className="w-full border-b border-zinc-200 bg-white">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 md:px-8">
+          <div className="flex w-full items-center justify-between gap-4 px-4 py-4 md:px-8">
             <div className="flex items-center gap-6">
               <p className="text-base font-medium text-zinc-900">
                 Évaluation de {projectName || "votre projet"}
@@ -2221,7 +2221,7 @@ export default function QuestionnairePage() {
 
         {/* Stepper - Full width */}
         <div className="w-full bg-white pb-6 pt-4">
-          <div className="mx-auto max-w-5xl px-4 md:px-8">
+          <div className="w-full px-4 md:px-8">
             {/* Labels */}
             <div className="mb-3 flex justify-between">
               {steps.map((stepId, index) => {
@@ -2290,7 +2290,7 @@ export default function QuestionnairePage() {
 
         {/* Footer - Full width */}
         <footer className="w-full border-t border-zinc-200 bg-white">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 md:px-8">
+          <div className="flex w-full items-center justify-between px-4 py-4 md:px-8">
             <button
               type="button"
               onClick={goPrevious}

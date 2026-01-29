@@ -81,21 +81,10 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as RequestBody;
 
-    // Temporairement remplacer la config dans le cache
-    const { getConfig } = await import("@/config/config-loader");
-    const { saveConfig } = await import("@/config/config-server");
-    const originalConfig = getConfig();
-    
-    // Utiliser la config fournie pour le calcul
-    // On va modifier computePriceScore pour accepter une config optionnelle
-    // Pour l'instant, on va utiliser une approche différente : modifier directement le fichier de config
-    // temporairement, mais c'est risqué. Mieux vaut modifier computePriceScore.
-    
-    // Solution temporaire : sauvegarder la config, calculer, restaurer
-    await saveConfig(body.config);
-    
-    try {
-      const result = computePriceScore({
+    // Utiliser la config fournie directement (pas d'écriture disque).
+    // En prod (Vercel) le FS est read-only ; saveConfig() échouerait.
+    const result = computePriceScore(
+      {
         problemClarity: body.testData.problemClarity,
         problemApproach: body.testData.problemApproach,
         interviewDepth: body.testData.interviewDepth || "",
@@ -111,30 +100,24 @@ export async function POST(request: Request) {
         effortConfidence: body.testData.effortConfidence || "",
         noEffortEstimate: body.testData.noEffortEstimate || false,
         effortScope: (body.testData.effortScope as "" | "mvp" | "v1" | "vision_complete") || "",
-      });
+      },
+      body.config,
+    );
 
-      // Restaurer la config originale
-      await saveConfig(originalConfig);
-
-      return NextResponse.json(
-        {
-          scorePercent: result.scoreTotal,
-          riskLevel: bandToRiskLevel(result.band),
-          breakdown: {
-            P: result.subscores.P,
-            R: result.subscores.R,
-            I: result.subscores.I,
-            C: result.subscores.C,
-            E: result.subscores.E,
-          },
+    return NextResponse.json(
+      {
+        scorePercent: result.scoreTotal,
+        riskLevel: bandToRiskLevel(result.band),
+        breakdown: {
+          P: result.subscores.P,
+          R: result.subscores.R,
+          I: result.subscores.I,
+          C: result.subscores.C,
+          E: result.subscores.E,
         },
-        { status: 200 },
-      );
-    } catch (calcError) {
-      // Restaurer en cas d'erreur
-      await saveConfig(originalConfig);
-      throw calcError;
-    }
+      },
+      { status: 200 },
+    );
   } catch (error) {
     console.error("[PRICE Test Score Error]", error);
     return NextResponse.json(
