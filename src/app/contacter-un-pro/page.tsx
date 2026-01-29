@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 
 export default function ContactProPage() {
   const router = useRouter();
@@ -20,7 +21,6 @@ export default function ContactProPage() {
 
   const [consentAccepted, setConsentAccepted] = useState(false);
 
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,23 +34,22 @@ export default function ContactProPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    setError(null);
     setSuccess(null);
 
     if (!projectTitle.trim()) {
-      setError("Merci d’indiquer un titre de projet.");
+      toast.error("Merci d’indiquer un titre de projet.", { duration: 10000 });
       return;
     }
     if (!fullName.trim()) {
-      setError("Merci d’indiquer votre nom.");
+      toast.error("Merci d’indiquer votre nom.", { duration: 10000 });
       return;
     }
     if (!email.trim()) {
-      setError("Merci d’indiquer votre email.");
+      toast.error("Merci d’indiquer votre email.", { duration: 10000 });
       return;
     }
     if (!consentAccepted) {
-      setError("Merci de cocher la case de consentement avant d’envoyer votre demande.");
+      toast.error("Merci de cocher la case de consentement avant d’envoyer votre demande.", { duration: 10000 });
       return;
     }
 
@@ -91,10 +90,11 @@ export default function ContactProPage() {
         router.push("/");
       }, 2500);
     } catch (err) {
-      setError(
+      toast.error(
         err instanceof Error
           ? err.message
           : "Une erreur est survenue lors de l’envoi de votre demande.",
+        { duration: 10000 },
       );
     } finally {
       setSubmitting(false);
@@ -285,11 +285,6 @@ export default function ContactProPage() {
           </section>
         </main>
 
-        {error && (
-          <p className="text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        )}
         {success && (
           <p className="text-sm text-emerald-600" role="status">
             {success}

@@ -6,6 +6,7 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useState, useEffect } from "react";
+import toast from "react-hot-toast";
 
 type Persona = {
   name: string;
@@ -28,8 +29,7 @@ type StepId =
   | "value_expectation"
   | "personas"
   | "reach"
-  | "effort"
-  | "context";
+  | "effort";
 
 const steps: StepId[] = [
   "problem",
@@ -39,7 +39,6 @@ const steps: StepId[] = [
   "personas",
   "reach",
   "effort",
-  "context",
 ];
 
 export default function QuestionnairePage() {
@@ -47,7 +46,6 @@ export default function QuestionnairePage() {
 
   const [projectName, setProjectName] = useState("");
   const [projectNameDraft, setProjectNameDraft] = useState("");
-  const [projectNameError, setProjectNameError] = useState<string | null>(null);
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
@@ -243,15 +241,6 @@ export default function QuestionnairePage() {
     });
   }, [effortScope]);
 
-  const [projectStage, setProjectStage] = useState("");
-  const [orgType, setOrgType] = useState("");
-  const [hasPitchDeck, setHasPitchDeck] = useState(false);
-  const [hasInvestors, setHasInvestors] = useState(false);
-  const [hasPayingCustomers, setHasPayingCustomers] = useState(false);
-  const [contextNotes, setContextNotes] = useState("");
-
-  const [error, setError] = useState<string | null>(null);
-
   const currentStep = steps[currentStepIndex];
 
   const totalSteps = steps.length;
@@ -303,7 +292,6 @@ export default function QuestionnairePage() {
   };
 
   const goPrevious = () => {
-    setError(null);
     if (currentStepIndex > 0) {
       setCurrentStepIndex((i) => {
         let prev = i - 1;
@@ -321,7 +309,6 @@ export default function QuestionnairePage() {
   };
 
   const goNext = () => {
-    setError(null);
     if (currentStepIndex < totalSteps - 1) {
       setCurrentStepIndex((i) => {
         let next = i + 1;
@@ -341,16 +328,14 @@ export default function QuestionnairePage() {
   const validateCurrentStep = (): boolean => {
     if (currentStep === "problem") {
       if (!problemClarity) {
-        setError("Merci de préciser si vous partez d’un problème ou surtout d’une solution.");
+        toast.error("Merci de préciser si vous partez d’un problème ou surtout d’une solution.");
         return false;
       }
     }
 
     if (currentStep === "problem_approach") {
       if (!problemApproach) {
-        setError(
-          "Merci d’indiquer la démarche que vous avez eue pour démontrer l’existence du problème.",
-        );
+        toast.error( "Merci d’indiquer la démarche que vous avez eue pour démontrer l’existence du problème.", { duration: 10000 });
         return false;
       }
     }
@@ -360,24 +345,19 @@ export default function QuestionnairePage() {
         return true;
       }
       if (!interviewDepth) {
-        setError(
-          "Merci de préciser comment vous avez mené vos interviews pour creuser le problème.",
-        );
+        toast.error("Merci de préciser comment vous avez mené vos interviews pour creuser le problème.", { duration: 10000 });
         return false;
       }
     }
 
     if (currentStep === "value_expectation") {
       if (!valueExpectations) {
-        setError(
-          "Merci d’indiquer à quoi vos utilisateurs gagneraient si le problème était résolu (ou sélectionnez « Je ne sais pas »).",
-        );
+        toast.error(
+          "Merci d’indiquer à quoi vos utilisateurs gagneraient si le problème était résolu (ou sélectionnez « Je ne sais pas »).", { duration: 10000 });
         return false;
       }
       if (!alternativeSolutions) {
-        setError(
-          "Merci d’indiquer si le problème peut déjà être résolu aujourd’hui (ou sélectionnez « Je ne sais pas »).",
-        );
+        toast.error( "Merci d’indiquer si le problème peut déjà être résolu aujourd’hui (ou sélectionnez « Je ne sais pas »).", { duration: 10000 });
         return false;
       }
     }
@@ -385,11 +365,11 @@ export default function QuestionnairePage() {
     if (currentStep === "personas") {
       const filled = personas.filter((p) => p.name.trim());
       if (filled.length === 0) {
-        setError("Merci d’ajouter au moins un type d’utilisateur concerné.");
+        toast.error("Merci d’ajouter au moins un type d’utilisateur concerné.", { duration: 10000 });
         return false;
       }
       if (filled.some((p) => !p.confidence)) {
-        setError("Merci d’indiquer le niveau de confiance pour chaque persona.");
+        toast.error("Merci d’indiquer le niveau de confiance pour chaque persona.", { duration: 10000 });
         return false;
       }
     }
@@ -397,7 +377,7 @@ export default function QuestionnairePage() {
     if (currentStep === "reach") {
       const filledPersonas = personas.filter((p) => p.name.trim());
       if (filledPersonas.length === 0) {
-        setError("Merci d’ajouter au moins un persona à l’étape précédente.");
+        toast.error("Merci d’ajouter au moins un persona à l’étape précédente.", { duration: 10000 });
         return false;
       }
       // Validation optionnelle : on peut laisser les champs vides pour l'instant
@@ -406,20 +386,18 @@ export default function QuestionnairePage() {
 
     if (currentStep === "effort") {
       if (!effortScope) {
-        setError("Merci de sélectionner le périmètre de votre estimation (MVP, V1 ou Vision complète).");
+        toast.error("Merci de sélectionner le périmètre de votre estimation (MVP, V1 ou Vision complète).", { duration: 10000 });
         return false;
       }
       if (noEffortEstimate) {
         return true;
       }
       if (budgetMin === 0 && budgetMax === 0 && timeMin === 0 && timeMax === 0) {
-        setError(
-          "Merci d’indiquer au moins un ordre de grandeur (budget ou temps), ou cochez « Je ne sais pas du tout estimer l’effort ».",
-        );
+        toast.error( "Merci d’indiquer au moins un ordre de grandeur (budget ou temps), ou cochez « Je ne sais pas du tout estimer l’effort ».", { duration: 10000 });
         return false;
       }
       if (!effortConfidence) {
-        setError("Merci d’indiquer votre niveau de confiance dans cette estimation.");
+        toast.error("Merci d’indiquer votre niveau de confiance dans cette estimation.", { duration: 10000 });
         return false;
       }
     }
@@ -429,7 +407,6 @@ export default function QuestionnairePage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    setError(null);
 
     // Valider la dernière étape avant soumission
     if (!validateCurrentStep()) return;
@@ -454,14 +431,6 @@ export default function QuestionnairePage() {
           effortConfidence,
           noEffortEstimate,
           effortScope,
-          context: {
-            projectStage,
-            orgType,
-            hasPitchDeck,
-            hasInvestors,
-            hasPayingCustomers,
-            notes: contextNotes,
-          },
         }),
       });
 
@@ -510,10 +479,11 @@ export default function QuestionnairePage() {
         )}&riskLevel=${encodeURIComponent(data.riskLevel)}`,
       );
     } catch (err) {
-      setError(
+      toast.error(
         err instanceof Error
           ? err.message
           : "Une erreur est survenue lors du calcul du score.",
+        { duration: 10000 },
       );
     }
   };
@@ -541,8 +511,6 @@ export default function QuestionnairePage() {
         return "Impact par utilisateur";
       case "effort":
         return "Effort estimé";
-      case "context":
-        return "Contexte (optionnel)";
       default:
         return "";
     }
@@ -1996,92 +1964,6 @@ export default function QuestionnairePage() {
           </section>
         );
 
-      case "context":
-        return (
-          <section className="space-y-4">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Quelques informations contextuelles (optionnel)
-            </h1>
-            <p className="text-sm text-zinc-700">
-              Ces éléments ne rentrent pas dans le calcul du score, mais aident un pro à
-              comprendre votre situation si vous choisissez de le contacter ensuite.
-            </p>
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-zinc-800">
-                  Stade actuel du projet
-                </label>
-                <select
-                  value={projectStage}
-                  onChange={(e) => setProjectStage(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="">Je préfère ne pas préciser</option>
-                  <option value="idea">Idée</option>
-                  <option value="prototype">Prototype / maquette</option>
-                  <option value="in_production">Déjà en production</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-zinc-800">
-                  Type d&apos;organisation
-                </label>
-                <select
-                  value={orgType}
-                  onChange={(e) => setOrgType(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="">Je préfère ne pas préciser</option>
-                  <option value="startup">Startup</option>
-                  <option value="company">Entreprise</option>
-                  <option value="public_admin">Administration / service public</option>
-                  <option value="association">Association</option>
-                  <option value="freelance">Indépendant</option>
-                  <option value="side_project">Side project</option>
-                </select>
-              </div>
-              <div className="flex flex-wrap gap-4 text-sm text-zinc-800">
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={hasPitchDeck}
-                    onChange={(e) => setHasPitchDeck(e.target.checked)}
-                  />
-                  <span>J&apos;ai un pitch deck ou équivalent.</span>
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={hasInvestors}
-                    onChange={(e) => setHasInvestors(e.target.checked)}
-                  />
-                  <span>J&apos;ai (ou je cherche) des investisseurs.</span>
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={hasPayingCustomers}
-                    onChange={(e) => setHasPayingCustomers(e.target.checked)}
-                  />
-                  <span>J&apos;ai déjà des clients prêts à payer.</span>
-                </label>
-              </div>
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-zinc-800">
-                  Infos complémentaires (optionnel)
-                </label>
-                <textarea
-                  value={contextNotes}
-                  onChange={(e) => setContextNotes(e.target.value)}
-                  rows={4}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="Précisez par exemple le contexte interne, les enjeux politiques, ou toute information que vous jugez utile."
-                />
-              </div>
-            </div>
-          </section>
-        );
-
       default:
         return null;
     }
@@ -2095,7 +1977,6 @@ export default function QuestionnairePage() {
     // Réinitialiser tous les états
     setProjectName("");
     setProjectNameDraft("");
-    setProjectNameError(null);
     setCurrentStepIndex(0);
     setProblemClarity("");
     setProblemApproach("");
@@ -2112,23 +1993,15 @@ export default function QuestionnairePage() {
     setEffortConfidence("");
     setNoEffortEstimate(false);
     setEffortScope("");
-    setProjectStage("");
-    setOrgType("");
-    setHasPitchDeck(false);
-    setHasInvestors(false);
-    setHasPayingCustomers(false);
-    setContextNotes("");
-    setError(null);
     router.push("/");
   };
 
   const confirmProjectName = () => {
     const name = projectNameDraft.trim();
     if (name.length < 2) {
-      setProjectNameError("Merci d’indiquer un nom de projet (au moins 2 caractères).");
+      toast.error("Merci d’indiquer un nom de projet (au moins 2 caractères).", { duration: 10000 });
       return;
     }
-    setProjectNameError(null);
     setProjectName(name);
     if (typeof window !== "undefined") {
       sessionStorage.setItem("riceCookerProjectName", name);
@@ -2162,19 +2035,11 @@ export default function QuestionnairePage() {
               <input
                 type="text"
                 value={projectNameDraft}
-                onChange={(e) => {
-                  setProjectNameDraft(e.target.value);
-                  setProjectNameError(null);
-                }}
+                onChange={(e) => setProjectNameDraft(e.target.value)}
                 placeholder="Ex. « PRICE COOKER », « Mon appli de gestion », etc."
                 className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 autoFocus
               />
-              {projectNameError && (
-                <p className="text-sm text-red-600" role="alert">
-                  {projectNameError}
-                </p>
-              )}
             </div>
 
             <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -2198,12 +2063,13 @@ export default function QuestionnairePage() {
       )}
 
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(e) => e.preventDefault()}
         className="flex min-h-screen flex-col"
       >
-        {/* Header - Full width */}
-        <header className="w-full border-b border-zinc-200 bg-white">
-          <div className="flex w-full items-center justify-between gap-4 px-4 py-4 md:px-8">
+        {/* Top bar (header + stepper) - Fixed */}
+        <div className="fixed left-0 right-0 top-0 z-50 w-full border-b border-zinc-200 bg-white">
+          <header className="w-full">
+            <div className="flex w-full items-center justify-between gap-4 px-4 py-4 md:px-8">
             <div className="flex items-center gap-6">
               <p className="text-base font-medium text-zinc-900">
                 Évaluation de {projectName || "votre projet"}
@@ -2219,77 +2085,94 @@ export default function QuestionnairePage() {
           </div>
         </header>
 
-        {/* Stepper - Full width */}
-        <div className="w-full bg-white pb-6 pt-4">
-          <div className="w-full px-4 md:px-8">
-            {/* Labels */}
-            <div className="mb-3 flex justify-between">
+          {/* Stepper - Full width : chaque label au-dessus de son point, centré */}
+          <div className="w-full bg-white pb-6 pt-4">
+          <div className="w-full px-4 md:px-6 lg:px-8">
+            {/* Ligne des labels : colonnes égales, texte centré */}
+            <div className="mb-2 flex w-full gap-0">
               {steps.map((stepId, index) => {
                 const isActive = index === currentStepIndex;
                 const isPast = index < currentStepIndex;
                 return (
                   <div
                     key={stepId}
-                    className={`flex-1 text-center text-xs transition-all ${
-                      isActive
-                        ? "font-semibold text-zinc-900"
-                        : isPast
-                          ? "font-medium text-zinc-600"
-                          : "font-normal text-zinc-400"
-                    }`}
+                    className="flex min-w-0 flex-1 flex-col items-center justify-end px-1"
                   >
-                    <span className="hidden lg:inline">{stepLabel(stepId)}</span>
-                    <span className="lg:hidden">{index + 1}</span>
+                    <span
+                      className={`hidden block w-full text-center text-xs leading-tight lg:inline ${
+                        isActive
+                          ? "font-semibold text-zinc-900"
+                          : isPast
+                            ? "font-medium text-zinc-600"
+                            : "font-normal text-zinc-400"
+                      }`}
+                    >
+                      {stepLabel(stepId)}
+                    </span>
+                    <span className="block w-full text-center text-xs font-medium text-zinc-500 lg:hidden">
+                      {index + 1}
+                    </span>
                   </div>
                 );
               })}
             </div>
-            {/* Progress bar with dots */}
-            <div className="relative flex items-center">
-              {/* Background track */}
-              <div className="absolute left-0 right-0 h-1 rounded-full bg-zinc-200" />
-              {/* Active track */}
+            {/* Piste + points : barre du point Problème au point Effort estimé */}
+            <div className="relative flex w-full items-center">
+              {/* Piste grise : du centre du 1er point au centre du dernier */}
               <div
-                className="absolute left-0 h-1 rounded-full bg-blue-500 transition-all duration-300"
+                className="absolute h-1 rounded-full bg-zinc-200"
                 style={{
-                  width: `${(currentStepIndex / (totalSteps - 1)) * 100}%`,
+                  left: `${(0.5 / totalSteps) * 100}%`,
+                  width: `${((totalSteps - 1) / totalSteps) * 100}%`,
                 }}
               />
-              {/* Dots */}
-              <div className="relative z-10 flex w-full justify-between">
+              {/* Barre bleue : du centre Problème au centre de l'étape courante */}
+              <div
+                className="absolute h-1 rounded-full bg-blue-500 transition-all duration-300"
+                style={{
+                  left: `${(0.5 / totalSteps) * 100}%`,
+                  width:
+                    currentStepIndex === totalSteps - 1
+                      ? `${((totalSteps - 1) / totalSteps) * 100}%`
+                      : `${(currentStepIndex / totalSteps) * 100}%`,
+                }}
+              />
+              <div className="relative z-10 flex w-full gap-0">
                 {steps.map((stepId, index) => {
                   const isPastOrCurrent = index <= currentStepIndex;
                   return (
                     <div
                       key={stepId}
-                      className={`h-3 w-3 rounded-full border-2 transition-all ${
-                        isPastOrCurrent
-                          ? "border-blue-500 bg-white"
-                          : "border-zinc-300 bg-white"
-                      }`}
-                    />
+                      className="flex min-w-0 flex-1 justify-center"
+                    >
+                      <div
+                        className={`h-3 w-3 shrink-0 rounded-full border-2 transition-all ${
+                          isPastOrCurrent
+                            ? "border-blue-500 bg-white"
+                            : "border-zinc-300 bg-white"
+                        }`}
+                      />
+                    </div>
                   );
                 })}
               </div>
             </div>
           </div>
         </div>
-
-        {/* Main content - Centered with max width */}
-        <div className="flex-1 px-4 py-6 md:px-8 md:py-8">
-          <main className="mx-auto max-w-3xl space-y-4 rounded-2xl bg-white p-5 shadow-sm md:p-6">
-            {renderStep()}
-          </main>
-
-          {error && (
-            <p className="mx-auto mt-4 max-w-3xl text-sm text-red-600" role="alert">
-              {error}
-            </p>
-          )}
         </div>
 
-        {/* Footer - Full width */}
-        <footer className="w-full border-t border-zinc-200 bg-white">
+        {/* Main content - Centered, padding pour ne pas passer sous les barres fixes */}
+        <div className="flex-1 overflow-auto pt-44 pb-24 md:pt-48 md:pb-28">
+          <div className="px-4 py-6 md:px-8 md:py-8">
+            <main className="mx-auto max-w-3xl space-y-4 rounded-2xl bg-white p-5 shadow-sm md:p-6">
+                {renderStep()}
+            </main>
+
+          </div>
+        </div>
+
+        {/* Bottom bar - Fixed */}
+        <footer className="fixed bottom-0 left-0 right-0 z-50 w-full border-t border-zinc-200 bg-white">
           <div className="flex w-full items-center justify-between px-4 py-4 md:px-8">
             <button
               type="button"
@@ -2302,7 +2185,8 @@ export default function QuestionnairePage() {
 
             {isLastStep ? (
               <button
-                type="submit"
+                type="button"
+                onClick={() => handleSubmit({ preventDefault: () => {} } as FormEvent<HTMLFormElement>)}
                 className="rounded-full bg-blue-500 px-6 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-600"
               >
                 Voir mon résultat
